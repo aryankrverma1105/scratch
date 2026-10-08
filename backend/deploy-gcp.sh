@@ -35,11 +35,11 @@ echo "==> 5. Configuring Nginx Reverse Proxy..."
 if [ -f "nginx-attendance.conf" ]; then
   sudo cp nginx-attendance.conf /etc/nginx/sites-available/sologix-attendance.conf
   sudo ln -sf /etc/nginx/sites-available/sologix-attendance.conf /etc/nginx/sites-enabled/sologix-attendance.conf
-  sudo nginx -t && sudo systemctl reload nginx || echo "Nginx notice: Backend running directly on port 5000"
+  sudo nginx -t && sudo systemctl reload nginx || echo "Nginx notice: Backend running directly on port 5050"
 fi
 
 echo "=============================================================================="
 echo "✅ Sologix Energy Backend successfully deployed and running on GCP VM!"
-echo "   Health Check: curl http://localhost:5000/api/health"
-echo "   External URL: http://34.180.17.0:5000/api/health"
+echo "   Health Check: curl http://localhost:5050/api/health"
+echo "   External URL: http://34.180.17.0:5050/api/health"
 echo "=============================================================================="
