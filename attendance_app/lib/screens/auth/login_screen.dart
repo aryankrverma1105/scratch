@@ -86,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
               decoration: InputDecoration(
                 filled: true,
                 fillColor: AppColors.inputDark,
-                hintText: 'http://10.0.2.2:5000 or https://vm-ip:5000',
+                hintText: 'http://34.180.17.0:5000',
                 hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),

@@ -68,7 +68,7 @@ void onStart(ServiceInstance service) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
-      final baseUrl = prefs.getString('server_base_url') ?? 'http://10.0.2.2:5000';
+      final baseUrl = prefs.getString('server_base_url') ?? 'http://34.180.17.0:5000';
 
       if (token == null) {
         // Not logged in or checked out

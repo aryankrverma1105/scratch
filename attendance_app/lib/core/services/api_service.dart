@@ -12,7 +12,7 @@ class ApiService {
   ApiService._internal();
 
   late Dio _dio;
-  String _baseUrl = 'http://10.0.2.2:5000'; // Default for Android emulator to localhost
+  String _baseUrl = 'http://34.180.17.0:5000'; // Pre-configured to user GCP VM
   String? _token;
   UserModel? _currentUser;
 
@@ -22,7 +22,7 @@ class ApiService {
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    _baseUrl = prefs.getString('server_base_url') ?? 'http://10.0.2.2:5000';
+    _baseUrl = prefs.getString('server_base_url') ?? 'http://34.180.17.0:5000';
     _token = prefs.getString('jwt_token');
 
     _dio = Dio(
