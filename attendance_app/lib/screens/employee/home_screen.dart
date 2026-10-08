@@ -7,6 +7,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/background_tracker.dart';
+import '../../core/services/sync_service.dart';
 import '../../models/attendance_model.dart';
 import '../../models/user_model.dart';
 import 'profile_screen.dart';
@@ -32,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    SyncService().init();
     _loadInitialData();
     _setupGpsMonitoring();
   }
@@ -151,14 +153,14 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // 2. Open front-facing camera for Selfie capture (Requirement 19)
+    // 2. Open front-facing camera for Selfie capture with space-saving compression
     try {
       final XFile? photo = await _picker.pickImage(
         source: ImageSource.camera,
         preferredCameraDevice: CameraDevice.front,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
+        maxWidth: 600, // Compact resolution saves 95%+ space
+        maxHeight: 600,
+        imageQuality: 65, // Highly optimized JPEG quality
       );
 
       if (photo == null) {
@@ -174,10 +176,17 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       final selfieFile = File(photo.path);
+      final sizeKb = (selfieFile.lengthSync() / 1024).toStringAsFixed(1);
 
-      // 3. Confirm selfie with coordinate preview dialog
+      // 3. Confirm selfie with coordinate & compressed size preview dialog
       if (!mounted) return;
-      final confirmed = await _showSelfieConfirmationDialog(selfieFile, position.latitude, position.longitude, isCheckIn);
+      final confirmed = await _showSelfieConfirmationDialog(
+        selfieFile,
+        position.latitude,
+        position.longitude,
+        isCheckIn,
+        sizeKb,
+      );
       if (!confirmed) return;
 
       // 4. Submit to API
@@ -246,7 +255,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<bool> _showSelfieConfirmationDialog(File selfie, double lat, double lng, bool isCheckIn) async {
+  Future<bool> _showSelfieConfirmationDialog(
+    File selfie,
+    double lat,
+    double lng,
+    bool isCheckIn,
+    String sizeKb,
+  ) async {
     return await showDialog<bool>(
           context: context,
           barrierDismissible: false,
@@ -276,15 +291,32 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: AppColors.inputDark,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Row(
+                  child: Column(
                     children: [
-                      const Icon(Icons.location_on, color: AppColors.success, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'GPS: ${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
-                          style: const TextStyle(color: Colors.white70, fontSize: 13),
-                        ),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on, color: AppColors.success, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'GPS: ${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
+                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(Icons.cloud_done_outlined, color: AppColors.info, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Selfie Size: $sizeKb KB (Optimized for GCP)',
+                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -433,6 +465,92 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Live GCP Cloud Sync Indicator Bar
+                        ValueListenableBuilder<SyncStatus>(
+                          valueListenable: SyncService().statusNotifier,
+                          builder: (context, sync, child) {
+                            final isSyncing = sync.isSyncing;
+                            final isOnline = sync.isOnline;
+                            final pending = sync.pendingLocationsCount;
+
+                            Color statusColor = isSyncing
+                                ? AppColors.info
+                                : (!isOnline
+                                    ? AppColors.warning
+                                    : (pending > 0 ? AppColors.warning : AppColors.success));
+
+                            String statusLabel = isSyncing
+                                ? 'Synchronizing with GCP Cloud...'
+                                : (!isOnline
+                                    ? 'Offline (Will sync when reconnected)'
+                                    : (pending > 0
+                                        ? '$pending offline points waiting to sync'
+                                        : 'GCP Cloud Synchronized'));
+
+                            return GestureDetector(
+                              onTap: () async {
+                                final ok = await SyncService().syncNow();
+                                _loadInitialData();
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      backgroundColor: ok ? AppColors.success : AppColors.warning,
+                                      content: Text(ok ? '✅ Sync complete with GCP VM' : '⚠️ Server probe failed. Check VM status.'),
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 16),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardDark,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: statusColor.withValues(alpha: 0.4), width: 1),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        if (isSyncing)
+                                          SizedBox(
+                                            width: 12,
+                                            height: 12,
+                                            child: CircularProgressIndicator(strokeWidth: 2, color: statusColor),
+                                          )
+                                        else
+                                          Container(
+                                            width: 8,
+                                            height: 8,
+                                            decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
+                                          ),
+                                        const SizedBox(width: 10),
+                                        Text(
+                                          statusLabel,
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(alpha: 0.9),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.sync, color: AppColors.textMuted, size: 16),
+                                        SizedBox(width: 4),
+                                        Text('Sync', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+
                         // GPS Status Warning Banner if disabled (Requirement 14 & 15)
                         ValueListenableBuilder<bool>(
                           valueListenable: _locationService.isGpsEnabledNotifier,

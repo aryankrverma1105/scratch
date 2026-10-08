@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/user_model.dart';
 import '../../models/attendance_model.dart';
 import '../../models/location_model.dart';
+import 'sync_service.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -207,7 +208,15 @@ class ApiService {
         'timestamp': DateTime.now().toIso8601String(),
       });
     } catch (_) {
-      // Background silent ping, can fail gracefully or queue
+      // If network fails or phone is offline, queue in SyncService for later delivery
+      SyncService().queueLocationPoint(
+        latitude: latitude,
+        longitude: longitude,
+        accuracy: accuracy,
+        speed: speed,
+        altitude: altitude,
+        isGpsOff: isGpsOff,
+      );
     }
   }
 
