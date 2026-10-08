@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.npm
+
+# Database and uploads
+backend/data/*.db
+backend/data/*.db-journal
+backend/uploads/selfies/*
+!backend/uploads/selfies/.gitkeep
+
+# Environment files
+backend/.env
+
+# Flutter / Dart
+attendance_app/.dart_tool/
+attendance_app/.flutter-plugins
+attendance_app/.flutter-plugins-dependencies
+attendance_app/.packages
+attendance_app/build/
+attendance_app/android/.gradle/
+attendance_app/android/local.properties
+attendance_app/ios/Pods/
+attendance_app/ios/.symlinks/
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+*.DS_Store
+Thumbs.db
+
+# Agent configs
+.agent/
