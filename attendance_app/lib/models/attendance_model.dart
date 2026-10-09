@@ -57,7 +57,7 @@ class AttendanceRecord {
       id: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0,
       userId: json['user_id'] is int ? json['user_id'] : int.tryParse(json['user_id'].toString()) ?? 0,
       date: json['date'] ?? '',
-      checkInTime: DateTime.tryParse(json['check_in_time']?.toString() ?? '') ?? DateTime.now(),
+      checkInTime: (DateTime.tryParse(json['check_in_time']?.toString() ?? '') ?? DateTime.now()).toLocal(),
       checkInLat: (json['check_in_lat'] as num?)?.toDouble() ?? 0.0,
       checkInLng: (json['check_in_lng'] as num?)?.toDouble() ?? 0.0,
       checkInAccuracy: (json['check_in_accuracy'] as num?)?.toDouble(),
@@ -65,7 +65,7 @@ class AttendanceRecord {
       checkInAddress: json['check_in_address'],
       checkInSelfie: json['check_in_selfie'],
       checkOutTime: json['check_out_time'] != null
-          ? DateTime.tryParse(json['check_out_time'].toString())
+          ? DateTime.tryParse(json['check_out_time'].toString())?.toLocal()
           : null,
       checkOutLat: (json['check_out_lat'] as num?)?.toDouble(),
       checkOutLng: (json['check_out_lng'] as num?)?.toDouble(),

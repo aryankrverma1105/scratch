@@ -77,16 +77,24 @@ class PermissionService {
   }
 
   /// Prompt user to upgrade to "Allow all the time" (Background Location)
-  static Future<LocationPermission> requestBackgroundLocation() async {
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.whileInUse) {
-      // Re-requesting prompts for background permission on Android 10+
-      permission = await Geolocator.requestPermission();
-    }
-    return permission;
+  /// Returns true if granted directly, false if system requires opening settings
+  static Future<bool> requestBackgroundLocation() async {
+    // 1. Check if already granted
+    final locationPerm = await Geolocator.checkPermission();
+    if (locationPerm == LocationPermission.always) return true;
+
+    // 2. Attempt requesting through geolocator (works on Android 10 or when allowed by OS)
+    try {
+      final res = await Geolocator.requestPermission();
+      if (res == LocationPermission.always) return true;
+    } catch (_) {}
+
+    // 3. Verify again
+    final checkAfter = await Geolocator.checkPermission();
+    return checkAfter == LocationPermission.always;
   }
 
-  /// Open device app settings if permission is permanently denied
+  /// Open device app settings so user can choose "Allow all the time"
   static Future<bool> openAppSettings() async {
     return await Geolocator.openAppSettings();
   }

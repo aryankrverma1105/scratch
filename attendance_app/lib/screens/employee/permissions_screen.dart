@@ -56,8 +56,142 @@ class _PermissionsScreenState extends State<PermissionsScreen> with WidgetsBindi
   }
 
   Future<void> _requestBackgroundLocation() async {
-    await PermissionService.requestBackgroundLocation();
+    final granted = await PermissionService.requestBackgroundLocation();
     await _refreshPermissions();
+    if (!mounted) return;
+
+    if (!granted) {
+      _showBackgroundLocationGuidance();
+    }
+  }
+
+  void _showBackgroundLocationGuidance() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.cardDark,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.location_on, color: AppColors.info, size: 28),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Set "Allow all the time"',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, color: AppColors.textMuted),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Android 11+ and brands like Realme, Xiaomi, Vivo, Oppo & Samsung require background location to be set in device settings to prevent tracking stoppage when the phone is locked:',
+              style: TextStyle(color: AppColors.textDim, fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceDark,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Column(
+                children: [
+                  _buildStepRow(
+                    stepNumber: '1',
+                    text: 'Tap "Open App Settings" below',
+                  ),
+                  const SizedBox(height: 12),
+                  _buildStepRow(
+                    stepNumber: '2',
+                    text: 'Tap "Permissions" > "Location"',
+                  ),
+                  const SizedBox(height: 12),
+                  _buildStepRow(
+                    stepNumber: '3',
+                    text: 'Select "Allow all the time"',
+                    highlight: true,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.settings, color: Colors.white),
+                label: const Text(
+                  'Open App Settings',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.info,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  PermissionService.openAppSettings();
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStepRow({required String stepNumber, required String text, bool highlight = false}) {
+    return Row(
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: highlight ? AppColors.success : AppColors.info.withValues(alpha: 0.2),
+            shape: BoxShape.circle,
+          ),
+          child: Text(
+            stepNumber,
+            style: TextStyle(
+              color: highlight ? Colors.black : AppColors.info,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: highlight ? AppColors.success : Colors.white,
+              fontSize: 13,
+              fontWeight: highlight ? FontWeight.bold : FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   void _showBatteryHelpDialog() {

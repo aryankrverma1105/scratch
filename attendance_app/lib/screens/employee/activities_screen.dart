@@ -107,9 +107,9 @@ class _ActivitiesScreenState extends State<ActivitiesScreen> {
                                 itemBuilder: (context, index) {
                                   final rec = _records[index];
                                   final isCompleted = rec.status == 'checked_out';
-                                  final checkInStr = DateFormat('hh:mm a').format(rec.checkInTime);
+                                  final checkInStr = DateFormat('hh:mm a').format(rec.checkInTime.toLocal());
                                   final checkOutStr = rec.checkOutTime != null
-                                      ? DateFormat('hh:mm a').format(rec.checkOutTime!)
+                                      ? DateFormat('hh:mm a').format(rec.checkOutTime!.toLocal())
                                       : 'In Progress';
 
                                   String durationStr = '--';

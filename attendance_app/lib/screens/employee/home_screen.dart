@@ -141,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _updateWorkDuration() {
     if (_activeAttendance == null) return;
-    final diff = DateTime.now().difference(_activeAttendance!.checkInTime);
+    final diff = DateTime.now().difference(_activeAttendance!.checkInTime.toLocal());
     final hours = diff.inHours.toString().padLeft(2, '0');
     final minutes = (diff.inMinutes % 60).toString().padLeft(2, '0');
     final seconds = (diff.inSeconds % 60).toString().padLeft(2, '0');
@@ -791,7 +791,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       const SizedBox(height: 6),
                                       Text(
                                         isCheckedIn
-                                            ? 'Checked In: ${DateFormat('hh:mm a').format(_activeAttendance!.checkInTime)}'
+                                            ? 'Checked In: ${DateFormat('hh:mm a').format(_activeAttendance!.checkInTime.toLocal())}'
                                             : 'Continuous GPS Tracking begins upon Check-In',
                                         style: const TextStyle(
                                           fontSize: 13,

@@ -45,7 +45,7 @@ class LiveEmployeeLocation {
       phone: json['phone'],
       attendanceId: json['attendance_id'] != null ? int.tryParse(json['attendance_id'].toString()) : null,
       attendanceStatus: json['attendance_status'],
-      checkInTime: json['check_in_time'] != null ? DateTime.tryParse(json['check_in_time'].toString()) : null,
+      checkInTime: json['check_in_time'] != null ? DateTime.tryParse(json['check_in_time'].toString())?.toLocal() : null,
       lastLatitude: (json['last_latitude'] as num?)?.toDouble(),
       lastLongitude: (json['last_longitude'] as num?)?.toDouble(),
       lastAccuracy: (json['last_accuracy'] as num?)?.toDouble(),
@@ -53,7 +53,7 @@ class LiveEmployeeLocation {
       isGpsOff: json['last_is_gps_off'] == 1 || json['last_is_gps_off'] == true,
       isMocked: json['last_is_mocked'] == 1 || json['last_is_mocked'] == true,
       lastLocationTime: json['last_location_time'] != null
-          ? DateTime.tryParse(json['last_location_time'].toString())
+          ? DateTime.tryParse(json['last_location_time'].toString())?.toLocal()
           : null,
     );
   }
@@ -89,7 +89,7 @@ class RoutePoint {
       speed: (json['speed'] as num?)?.toDouble(),
       isGpsOff: json['is_gps_off'] == 1 || json['is_gps_off'] == true,
       isMocked: json['is_mocked'] == 1 || json['is_mocked'] == true,
-      timestamp: DateTime.tryParse(json['timestamp']?.toString() ?? '') ?? DateTime.now(),
+      timestamp: (DateTime.tryParse(json['timestamp']?.toString() ?? '') ?? DateTime.now()).toLocal(),
     );
   }
 }
@@ -124,7 +124,7 @@ class GpsAlert {
       alertType: json['alert_type'] ?? 'GPS_DISABLED',
       message: json['message'] ?? '',
       resolved: json['resolved'] == 1 || json['resolved'] == true,
-      createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+      createdAt: (DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now()).toLocal(),
     );
   }
 }

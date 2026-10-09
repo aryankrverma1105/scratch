@@ -326,7 +326,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                               const Icon(Icons.login, color: AppColors.success, size: 16),
                                               const SizedBox(width: 6),
                                               Text(
-                                                'In: ${DateFormat('hh:mm a').format(rec.checkInTime)}',
+                                                'In: ${DateFormat('hh:mm a').format(rec.checkInTime.toLocal())}',
                                                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
                                               ),
                                             ],
@@ -348,7 +348,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                               const SizedBox(width: 6),
                                               Text(
                                                 rec.checkOutTime != null
-                                                    ? 'Out: ${DateFormat('hh:mm a').format(rec.checkOutTime!)}'
+                                                    ? 'Out: ${DateFormat('hh:mm a').format(rec.checkOutTime!.toLocal())}'
                                                     : 'Out: Active shift',
                                                 style: TextStyle(
                                                   color: rec.checkOutTime != null ? Colors.white : AppColors.textMuted,
