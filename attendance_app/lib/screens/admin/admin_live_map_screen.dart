@@ -119,14 +119,15 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
       markers.add(
         Marker(
           point: LatLng(emp.lastLatitude!, emp.lastLongitude!),
-          width: 75,
-          height: 60,
+          width: 100,
+          height: 75,
           child: GestureDetector(
             onTap: () => _showEmployeeDetails(emp),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(6),
+                  padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(
                     color: markerColor,
                     shape: BoxShape.circle,
@@ -141,18 +142,24 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                             ? Icons.location_off
                             : Icons.person_pin,
                     color: Colors.white,
-                    size: 22,
+                    size: 20,
                   ),
                 ),
+                const SizedBox(height: 2),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: markerColor.withOpacity(0.9),
+                    color: markerColor.withValues(alpha: 0.92),
                     borderRadius: BorderRadius.circular(8),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.black26, blurRadius: 3),
+                    ],
                   ),
                   child: Text(
                     isMocked ? '⚠️ MOCK' : '${emp.fullName.split(' ').first} • $lastSeenText',
                     style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],

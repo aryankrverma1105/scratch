@@ -27,4 +27,9 @@
 -keep class id.flutter.flutter_background_service.** { *; }
 
 # SQLite / sqflite
+-dontwarn com.tekartik.sqflite.**
 -keep class com.tekartik.sqflite.** { *; }
+
+# Google Play Core
+-dontwarn com.google.android.play.core.**
+

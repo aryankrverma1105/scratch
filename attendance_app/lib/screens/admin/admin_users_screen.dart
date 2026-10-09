@@ -36,6 +36,28 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 
   Future<void> _toggleUserActive(UserModel user) async {
+    if (user.isRootAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: AppColors.error,
+          content: Text('Root System Administrator account cannot be deactivated.'),
+        ),
+      );
+      return;
+    }
+
+    final currentUser = ApiService().currentUser;
+    final isCallerRoot = currentUser?.isRootAdmin ?? false;
+    if (user.isAdmin && !isCallerRoot) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: AppColors.error,
+          content: Text('Only the Root System Administrator can deactivate other admin accounts.'),
+        ),
+      );
+      return;
+    }
+
     try {
       await ApiService().adminUpdateUser(user.id, isActive: !user.isActive);
       await _loadUsers();
@@ -55,6 +77,97 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       }
     }
   }
+
+  Future<void> _deleteUser(UserModel user) async {
+    if (user.isRootAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: AppColors.error,
+          content: Text('Root System Administrator account is permanent and cannot be deleted.'),
+        ),
+      );
+      return;
+    }
+
+    final currentUser = ApiService().currentUser;
+    final isCallerRoot = currentUser?.isRootAdmin ?? false;
+    if (user.isAdmin && !isCallerRoot) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: AppColors.error,
+          content: Text('Only the Root System Administrator can delete other admin accounts.'),
+        ),
+      );
+      return;
+    }
+
+    if (currentUser?.id == user.id) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: AppColors.error,
+          content: Text('You cannot delete your own account while logged in.'),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 26),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Delete User Account',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to permanently delete "${user.fullName}" (${user.role.toUpperCase()})?\n\nThis will permanently remove their profile, attendance logs, and location tracks. This action CANNOT be reversed.',
+          style: const TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete Permanently', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await ApiService().adminDeleteUser(user.id);
+      await _loadUsers();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.success,
+            content: Text('${user.fullName} deleted successfully.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(backgroundColor: AppColors.error, content: Text('Failed to delete: $e')),
+        );
+      }
+    }
+  }
+
 
   void _showResetPasswordModal(UserModel user) {
     final pwController = TextEditingController();
@@ -220,13 +333,19 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     fillColor: AppColors.inputDark,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'employee', child: Text('Employee (Field Staff)')),
-                    DropdownMenuItem(value: 'admin', child: Text('Administrator')),
-                  ],
-                  onChanged: (val) {
-                    if (val != null) setModalState(() => selectedRole = val);
-                  },
+                  items: user.isRootAdmin
+                      ? const [
+                          DropdownMenuItem(value: 'admin', child: Text('Root Administrator (Permanent)')),
+                        ]
+                      : const [
+                          DropdownMenuItem(value: 'employee', child: Text('Employee (Field Staff)')),
+                          DropdownMenuItem(value: 'admin', child: Text('Administrator')),
+                        ],
+                  onChanged: user.isRootAdmin
+                      ? null
+                      : (val) {
+                          if (val != null) setModalState(() => selectedRole = val);
+                        },
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
@@ -615,6 +734,21 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                           separatorBuilder: (_, __) => const SizedBox(height: 12),
                           itemBuilder: (context, index) {
                             final user = filteredUsers[index];
+                            final currentUser = ApiService().currentUser;
+                            final bool isCallerRoot = currentUser?.isRootAdmin ?? false;
+                            final bool isSelf = currentUser?.id == user.id;
+
+                            // Protection & privilege rules:
+                            // 1. Root admin account is permanent (cannot be deactivated or deleted by anyone)
+                            // 2. Caller cannot deactivate or delete themselves
+                            // 3. Only Root Admin can deactivate or delete other administrators
+                            // 4. Secondary admins can only deactivate or delete regular employees
+                            final bool canDeactivate = !user.isRootAdmin && !isSelf && (isCallerRoot || !user.isAdmin);
+                            final bool canDelete = !user.isRootAdmin && !isSelf && (isCallerRoot || !user.isAdmin);
+                            final bool canEdit = (!user.isRootAdmin && !user.isAdmin) || isCallerRoot || isSelf;
+                            final bool canResetPw = (!user.isRootAdmin && !user.isAdmin) || isCallerRoot || isSelf;
+
+                            final isRoot = user.isRootAdmin;
                             final isAdmin = user.isAdmin;
 
                             return InkWell(
@@ -632,6 +766,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                 decoration: BoxDecoration(
                                   color: AppColors.cardDark,
                                   borderRadius: BorderRadius.circular(18),
+                                  border: isRoot
+                                      ? Border.all(color: const Color(0xFFFFB300).withValues(alpha: 0.35), width: 1.2)
+                                      : null,
                                 ),
                                 child: Row(
                                   children: [
@@ -639,12 +776,19 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                       width: 48,
                                       height: 48,
                                       decoration: BoxDecoration(
-                                        color: isAdmin ? AppColors.info.withOpacity(0.2) : AppColors.success.withOpacity(0.2),
+                                        color: isRoot
+                                            ? const Color(0xFFFFB300).withValues(alpha: 0.2)
+                                            : (isAdmin ? AppColors.info.withValues(alpha: 0.2) : AppColors.success.withValues(alpha: 0.2)),
                                         shape: BoxShape.circle,
+                                        border: isRoot ? Border.all(color: const Color(0xFFFFB300), width: 1.5) : null,
                                       ),
                                       child: Icon(
-                                        isAdmin ? Icons.admin_panel_settings : Icons.badge,
-                                        color: isAdmin ? AppColors.info : AppColors.success,
+                                        isRoot
+                                            ? Icons.shield
+                                            : (isAdmin ? Icons.admin_panel_settings : Icons.badge),
+                                        color: isRoot
+                                            ? const Color(0xFFFFB300)
+                                            : (isAdmin ? AppColors.info : AppColors.success),
                                       ),
                                     ),
                                     const SizedBox(width: 14),
@@ -652,9 +796,24 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            user.fullName,
-                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                                          Row(
+                                            children: [
+                                              Flexible(
+                                                child: Text(
+                                                  user.fullName,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 15,
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              if (isRoot) ...[
+                                                const SizedBox(width: 6),
+                                                const Icon(Icons.verified, color: Color(0xFFFFB300), size: 16),
+                                              ],
+                                            ],
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
@@ -669,25 +828,50 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                         ],
                                       ),
                                     ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: user.isActive ? AppColors.inputDark : Colors.red.withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Text(
-                                        user.isActive ? user.role.toUpperCase() : 'DEACTIVATED',
-                                        style: TextStyle(
-                                          color: !user.isActive
-                                              ? AppColors.error
-                                              : isAdmin
-                                                  ? AppColors.info
-                                                  : AppColors.success,
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
+                                    if (isRoot)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFFB300).withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(color: const Color(0xFFFFB300).withValues(alpha: 0.4)),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.shield, color: Color(0xFFFFB300), size: 11),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'SUPER ADMIN',
+                                              style: TextStyle(
+                                                color: Color(0xFFFFB300),
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    else
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: user.isActive ? AppColors.inputDark : Colors.red.withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          user.isActive ? user.role.toUpperCase() : 'DEACTIVATED',
+                                          style: TextStyle(
+                                            color: !user.isActive
+                                                ? AppColors.error
+                                                : isAdmin
+                                                    ? AppColors.info
+                                                    : AppColors.success,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
-                                    ),
                                     const SizedBox(width: 4),
                                     PopupMenuButton<String>(
                                       icon: const Icon(Icons.more_vert, color: Colors.white70, size: 20),
@@ -707,6 +891,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                           _toggleUserActive(user);
                                         } else if (val == 'reset_pw') {
                                           _showResetPasswordModal(user);
+                                        } else if (val == 'delete') {
+                                          _deleteUser(user);
                                         } else if (val == 'route') {
                                           Navigator.push(
                                             context,
@@ -730,43 +916,46 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                             ],
                                           ),
                                         ),
-                                        const PopupMenuItem(
-                                          value: 'edit',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.edit, color: AppColors.info, size: 18),
-                                              SizedBox(width: 10),
-                                              Text('Edit Details', style: TextStyle(color: Colors.white)),
-                                            ],
+                                        if (canEdit)
+                                          const PopupMenuItem(
+                                            value: 'edit',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.edit, color: AppColors.info, size: 18),
+                                                SizedBox(width: 10),
+                                                Text('Edit Details', style: TextStyle(color: Colors.white)),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                        PopupMenuItem(
-                                          value: 'toggle_status',
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                user.isActive ? Icons.block : Icons.check_circle,
-                                                color: user.isActive ? AppColors.error : AppColors.success,
-                                                size: 18,
-                                              ),
-                                              SizedBox(width: 10),
-                                              Text(
-                                                user.isActive ? 'Deactivate User' : 'Activate User',
-                                                style: TextStyle(color: user.isActive ? AppColors.error : AppColors.success),
-                                              ),
-                                            ],
+                                        if (canDeactivate)
+                                          PopupMenuItem(
+                                            value: 'toggle_status',
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  user.isActive ? Icons.block : Icons.check_circle,
+                                                  color: user.isActive ? AppColors.error : AppColors.success,
+                                                  size: 18,
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Text(
+                                                  user.isActive ? 'Deactivate User' : 'Activate User',
+                                                  style: TextStyle(color: user.isActive ? AppColors.error : AppColors.success),
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                        const PopupMenuItem(
-                                          value: 'reset_pw',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.lock_reset, color: Colors.amber, size: 18),
-                                              SizedBox(width: 10),
-                                              Text('Reset Password', style: TextStyle(color: Colors.white)),
-                                            ],
+                                        if (canResetPw)
+                                          const PopupMenuItem(
+                                            value: 'reset_pw',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.lock_reset, color: Colors.amber, size: 18),
+                                                SizedBox(width: 10),
+                                                Text('Reset Password', style: TextStyle(color: Colors.white)),
+                                              ],
+                                            ),
                                           ),
-                                        ),
                                         if (!user.isAdmin)
                                           const PopupMenuItem(
                                             value: 'route',
@@ -775,6 +964,17 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                                 Icon(Icons.route, color: AppColors.success, size: 18),
                                                 SizedBox(width: 10),
                                                 Text('View Route Trail', style: TextStyle(color: Colors.white)),
+                                              ],
+                                            ),
+                                          ),
+                                        if (canDelete)
+                                          const PopupMenuItem(
+                                            value: 'delete',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.delete_forever, color: AppColors.error, size: 18),
+                                                SizedBox(width: 10),
+                                                Text('Delete User', style: TextStyle(color: AppColors.error)),
                                               ],
                                             ),
                                           ),

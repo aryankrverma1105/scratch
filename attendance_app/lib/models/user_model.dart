@@ -20,6 +20,7 @@ class UserModel {
   });
 
   bool get isAdmin => role == 'admin';
+  bool get isRootAdmin => id == 1 || email.trim().toLowerCase() == 'admin@company.com';
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(

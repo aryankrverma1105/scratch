@@ -12,6 +12,7 @@ router.use(authenticateToken, requireAdmin);
 router.get('/users', adminController.listUsers);
 router.post('/users', validateBody(createUserSchema), adminController.createUser);
 router.put('/users/:id', adminController.updateUser);
+router.delete('/users/:id', adminController.deleteUser);
 
 // Live location map tracking (Requirement 12)
 router.get('/live-locations', adminController.getLiveLocations);

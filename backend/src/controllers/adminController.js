@@ -1,6 +1,17 @@
 const bcrypt = require('bcryptjs');
 const db = require('../db');
+const config = require('../config');
 const { getCompanyDate, getDayRangeUtc } = require('../utils/timeUtils');
+
+function isRootSuperAdmin(user) {
+  if (!user) return false;
+  const rootEmail = (config.ADMIN_DEFAULT_EMAIL || 'admin@company.com').toLowerCase();
+  return (
+    user.id === 1 ||
+    (user.email && user.email.toLowerCase() === rootEmail) ||
+    (user.email && user.email.toLowerCase() === 'admin@company.com')
+  );
+}
 
 // List all users
 async function listUsers(req, res) {
@@ -63,15 +74,64 @@ async function createUser(req, res) {
 // Update user details or toggle status
 async function updateUser(req, res) {
   try {
-    const userId = req.params.id;
+    const userId = parseInt(req.params.id, 10);
     const { full_name, role, department, phone, is_active, password } = req.body;
 
-    const user = await db.get('SELECT id FROM users WHERE id = ?', [userId]);
-    if (!user) {
+    const targetUser = await db.get(
+      'SELECT id, email, username, full_name, role, department, phone, is_active FROM users WHERE id = ?',
+      [userId]
+    );
+    if (!targetUser) {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    const targetIsRoot = isRootSuperAdmin(targetUser);
+    const callerIsRoot = isRootSuperAdmin(req.user);
+
+    // Root Admin protections:
+    if (targetIsRoot) {
+      // No other admin can modify, change password, or deactivate Root Admin
+      if (req.user.id !== targetUser.id) {
+        return res.status(403).json({
+          error: 'Access denied: No other admin can modify, deactivate, or alter the Root System Administrator account.',
+        });
+      }
+      // Root Admin cannot deactivate themselves (prevents system lockout)
+      if (is_active !== undefined && (is_active === false || is_active === 0)) {
+        return res.status(403).json({
+          error: 'The Root System Administrator account cannot be deactivated.',
+        });
+      }
+      // Root Admin cannot be demoted to employee
+      if (role !== undefined && role !== 'admin') {
+        return res.status(403).json({
+          error: 'The Root System Administrator role cannot be altered.',
+        });
+      }
+    }
+
+    // Role-based restrictions on other administrators:
+    // If target is another admin, only Root Admin can deactivate or alter their role
+    if (targetUser.role === 'admin' && !callerIsRoot && req.user.id !== targetUser.id) {
+      if (is_active !== undefined || role !== undefined) {
+        return res.status(403).json({
+          error: 'Only the Root System Administrator can deactivate or modify other administrators.',
+        });
+      }
+    }
+
+    // Self-deactivation prevention for any logged-in user
+    if (req.user.id === targetUser.id && is_active !== undefined && (is_active === false || is_active === 0)) {
+      return res.status(400).json({ error: 'You cannot deactivate your own account.' });
+    }
+
     if (password) {
+      // Non-root admins cannot reset another admin's password
+      if (targetUser.role === 'admin' && !callerIsRoot && req.user.id !== targetUser.id) {
+        return res.status(403).json({
+          error: 'Only the Root System Administrator can reset passwords for administrator accounts.',
+        });
+      }
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(password, salt);
       await db.run('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?', [hash, userId]);
@@ -99,6 +159,52 @@ async function updateUser(req, res) {
     return res.json({ message: 'User updated successfully', user: updated });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to update user', details: error.message });
+  }
+}
+
+// Permanently delete a user (Protected: Root Admin can delete anyone; Secondary Admins cannot delete admins; Root Admin can never be deleted)
+async function deleteUser(req, res) {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    const targetUser = await db.get('SELECT id, email, username, full_name, role FROM users WHERE id = ?', [userId]);
+
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // 1. Root Super Admin account cannot be deleted by anyone!
+    if (isRootSuperAdmin(targetUser)) {
+      return res.status(403).json({
+        error: 'The Root System Administrator account is permanent and cannot be deleted.',
+      });
+    }
+
+    // 2. Caller cannot delete their own active account
+    if (req.user.id === targetUser.id) {
+      return res.status(400).json({ error: 'You cannot delete your own account while logged in.' });
+    }
+
+    // 3. Only the Root System Administrator can delete other admin accounts
+    const callerIsRoot = isRootSuperAdmin(req.user);
+    if (targetUser.role === 'admin' && !callerIsRoot) {
+      return res.status(403).json({
+        error: 'Only the Root System Administrator can delete administrator accounts.',
+      });
+    }
+
+    // Cascade delete all user data
+    await db.run('DELETE FROM gps_alerts WHERE user_id = ?', [userId]);
+    await db.run('DELETE FROM location_tracks WHERE user_id = ?', [userId]);
+    await db.run('DELETE FROM attendance WHERE user_id = ?', [userId]);
+    await db.run('DELETE FROM users WHERE id = ?', [userId]);
+
+    return res.json({
+      message: `User ${targetUser.full_name} (${targetUser.role}) has been permanently deleted.`,
+      deletedUserId: userId,
+    });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    return res.status(500).json({ error: 'Failed to delete user', details: error.message });
   }
 }
 
@@ -250,6 +356,7 @@ module.exports = {
   listUsers,
   createUser,
   updateUser,
+  deleteUser,
   getLiveLocations,
   getUserRouteHistory,
   getAllAttendance,

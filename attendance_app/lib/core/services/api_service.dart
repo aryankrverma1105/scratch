@@ -536,6 +536,15 @@ class ApiService {
     }
   }
 
+  Future<void> adminDeleteUser(int userId) async {
+    try {
+      await _dio.delete('/api/admin/users/$userId');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to delete user');
+    }
+  }
+
+
   Future<List<AttendanceRecord>> adminGetAttendance({String? date, int? userId, int limit = 200}) async {
     try {
       final query = <String, dynamic>{'limit': limit};
