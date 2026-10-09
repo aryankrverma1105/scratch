@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/constants/app_colors.dart';
 import '../core/services/api_service.dart';
@@ -17,6 +18,35 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  int _unreadAlertsCount = 0;
+  Timer? _alertBadgeTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAlertsBadge();
+    _alertBadgeTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      _checkAlertsBadge();
+    });
+  }
+
+  @override
+  void dispose() {
+    _alertBadgeTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkAlertsBadge() async {
+    final user = ApiService().currentUser;
+    if (user == null || !user.isAdmin) return;
+    try {
+      final alerts = await ApiService().adminGetAlerts();
+      final openCount = alerts.where((a) => !a.resolved).length;
+      if (mounted && openCount != _unreadAlertsCount) {
+        setState(() => _unreadAlertsCount = openCount);
+      }
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,28 +68,40 @@ class _MainNavigationState extends State<MainNavigation> {
           ];
 
     final List<BottomNavigationBarItem> navItems = isAdmin
-        ? const [
-            BottomNavigationBarItem(
+        ? [
+            const BottomNavigationBarItem(
               icon: Icon(Icons.home_outlined),
               activeIcon: Icon(Icons.home),
               label: 'Home',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.map_outlined),
               activeIcon: Icon(Icons.map),
               label: 'Live Map',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.group_outlined),
               activeIcon: Icon(Icons.group),
               label: 'Team',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.warning_amber_outlined),
-              activeIcon: Icon(Icons.warning_amber_rounded),
+              icon: _unreadAlertsCount > 0
+                  ? Badge.count(
+                      count: _unreadAlertsCount,
+                      backgroundColor: AppColors.error,
+                      child: const Icon(Icons.warning_amber_outlined),
+                    )
+                  : const Icon(Icons.warning_amber_outlined),
+              activeIcon: _unreadAlertsCount > 0
+                  ? Badge.count(
+                      count: _unreadAlertsCount,
+                      backgroundColor: AppColors.error,
+                      child: const Icon(Icons.warning_amber_rounded),
+                    )
+                  : const Icon(Icons.warning_amber_rounded),
               label: 'Alerts',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.person_outline),
               activeIcon: Icon(Icons.person),
               label: 'Profile',

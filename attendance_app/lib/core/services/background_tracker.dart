@@ -18,16 +18,26 @@ class BackgroundTrackerService {
   static Future<void> initializeService() async {
     final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    const AndroidNotificationChannel trackingChannel = AndroidNotificationChannel(
       'attendance_tracking_channel',
       'Sologix Attendance Tracking',
       description: 'Continuous duty GPS tracking in progress for Sologix Energy',
       importance: Importance.low,
     );
 
-    await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
+    const AndroidNotificationChannel alertChannel = AndroidNotificationChannel(
+      'gps_alert_channel',
+      'Location Security Alerts',
+      description: 'Critical alerts when GPS or permissions are disabled during active shift',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+    );
+
+    final androidPlugin = flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.createNotificationChannel(trackingChannel);
+    await androidPlugin?.createNotificationChannel(alertChannel);
 
     final service = FlutterBackgroundService();
 
@@ -78,14 +88,18 @@ void onStart(ServiceInstance service) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   StreamSubscription<Position>? positionSubscription;
+  StreamSubscription<ServiceStatus>? serviceStatusSubscription;
   Timer? heartbeatTimer;
   bool isProcessing = false;
   final battery = Battery();
+  String currentGpsState = 'OK'; // 'OK' | 'DISABLED' | 'PERMISSION_REVOKED'
 
   // Listen to external stop events
   service.on('stopService').listen((event) async {
     await positionSubscription?.cancel();
+    await serviceStatusSubscription?.cancel();
     heartbeatTimer?.cancel();
+    await _cancelAlertNotification();
     service.stopSelf();
   });
 
@@ -102,9 +116,18 @@ void onStart(ServiceInstance service) async {
       if (token == null) {
         // Logged out: stop tracking immediately
         await positionSubscription?.cancel();
+        await serviceStatusSubscription?.cancel();
         heartbeatTimer?.cancel();
+        await _cancelAlertNotification();
         service.stopSelf();
         return;
+      }
+
+      // If state was previously in alert and position is flowing, restore OK state
+      if (currentGpsState != 'OK') {
+        currentGpsState = 'OK';
+        await _sendGpsAlert(baseUrl, token, 'RESTORED');
+        await _cancelAlertNotification();
       }
 
       double? batteryPct;
@@ -135,7 +158,9 @@ void onStart(ServiceInstance service) async {
       if (flushRes.authRevoked || !flushRes.activeTracking) {
         debugPrint('Tracking ceased by server policy (authRevoked: ${flushRes.authRevoked}, active: ${flushRes.activeTracking})');
         await positionSubscription?.cancel();
+        await serviceStatusSubscription?.cancel();
         heartbeatTimer?.cancel();
+        await _cancelAlertNotification();
         service.stopSelf();
         return;
       }
@@ -148,6 +173,30 @@ void onStart(ServiceInstance service) async {
       isProcessing = false;
     }
   }
+
+  // Monitor location service hardware toggle for state-transition alerts
+  serviceStatusSubscription = Geolocator.getServiceStatusStream().listen((status) async {
+    final isEnabled = status == ServiceStatus.enabled;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    final token = prefs.getString('jwt_token');
+    final baseUrl = prefs.getString('server_base_url') ?? ApiService.defaultBaseUrl;
+
+    if (token == null) return;
+
+    if (!isEnabled && currentGpsState != 'DISABLED') {
+      currentGpsState = 'DISABLED';
+      await _sendGpsAlert(baseUrl, token, 'DISABLED');
+      await _showHighPriorityAlertNotification(
+        title: '⚠️ Turn Location back ON!',
+        body: 'Sologix duty tracking is paused. Continuous GPS is required by company policy.',
+      );
+    } else if (isEnabled && currentGpsState == 'DISABLED') {
+      currentGpsState = 'OK';
+      await _sendGpsAlert(baseUrl, token, 'RESTORED');
+      await _cancelAlertNotification();
+    }
+  });
 
   // 1. Stream updates with distanceFilter of 20 meters
   try {
@@ -177,21 +226,42 @@ void onStart(ServiceInstance service) async {
 
       if (token == null) {
         await positionSubscription?.cancel();
+        await serviceStatusSubscription?.cancel();
         heartbeatTimer?.cancel();
+        await _cancelAlertNotification();
         service.stopSelf();
         return;
       }
 
-      // Check permission
+      // Check permission state transition
       final permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-        _sendGpsAlert(baseUrl, token, 'LOCATION_PERMISSION_REVOKED');
+      if ((permission == LocationPermission.denied || permission == LocationPermission.deniedForever) &&
+          currentGpsState != 'LOCATION_PERMISSION_REVOKED') {
+        currentGpsState = 'LOCATION_PERMISSION_REVOKED';
+        await _sendGpsAlert(baseUrl, token, 'LOCATION_PERMISSION_REVOKED');
+        await _showHighPriorityAlertNotification(
+          title: '⚠️ Location Permission Revoked!',
+          body: 'Grant "Allow all the time" location access to keep duty shift tracking active.',
+        );
         return;
+      } else if (permission != LocationPermission.denied &&
+          permission != LocationPermission.deniedForever &&
+          currentGpsState == 'LOCATION_PERMISSION_REVOKED') {
+        currentGpsState = 'OK';
+        await _sendGpsAlert(baseUrl, token, 'RESTORED');
+        await _cancelAlertNotification();
       }
 
       final isGpsOn = await Geolocator.isLocationServiceEnabled();
       if (!isGpsOn) {
-        _sendGpsAlert(baseUrl, token, 'DISABLED');
+        if (currentGpsState != 'DISABLED') {
+          currentGpsState = 'DISABLED';
+          await _sendGpsAlert(baseUrl, token, 'DISABLED');
+          await _showHighPriorityAlertNotification(
+            title: '⚠️ Turn Location back ON!',
+            body: 'GPS is disabled. Turn Location on in settings to maintain attendance.',
+          );
+        }
         return;
       }
 
@@ -209,6 +279,43 @@ void onStart(ServiceInstance service) async {
   });
 }
 
+// Show high-priority lockscreen notification to employee
+Future<void> _showHighPriorityAlertNotification({
+  required String title,
+  required String body,
+}) async {
+  try {
+    final plugin = FlutterLocalNotificationsPlugin();
+    const androidDetails = AndroidNotificationDetails(
+      'gps_alert_channel',
+      'Location Security Alerts',
+      channelDescription: 'Critical alerts when GPS or permissions are disabled during active shift',
+      importance: Importance.max,
+      priority: Priority.high,
+      visibility: NotificationVisibility.public, // Visible on phone lock screen!
+      color: Color(0xFFEF4444),
+      ongoing: true,
+      autoCancel: false,
+    );
+    const details = NotificationDetails(android: androidDetails);
+    await plugin.show(
+      id: 999,
+      title: title,
+      body: body,
+      notificationDetails: details,
+    );
+  } catch (e) {
+    debugPrint('Failed to show alert notification: $e');
+  }
+}
+
+Future<void> _cancelAlertNotification() async {
+  try {
+    final plugin = FlutterLocalNotificationsPlugin();
+    await plugin.cancel(id: 999);
+  } catch (_) {}
+}
+
 Future<void> _sendGpsAlert(String baseUrl, String token, String status) async {
   try {
     final dio = Dio(BaseOptions(
@@ -222,7 +329,9 @@ Future<void> _sendGpsAlert(String baseUrl, String token, String status) async {
 
     final message = status == 'LOCATION_PERMISSION_REVOKED'
         ? 'Location permission revoked during active duty shift'
-        : 'Employee turned off GPS while app is minimized/running in background';
+        : status == 'RESTORED'
+            ? 'Employee restored Location / GPS services on active shift'
+            : 'Employee turned off GPS while app is minimized/running in background';
 
     await dio.post('/api/location/gps-status', data: {
       'status': status,

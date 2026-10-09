@@ -69,6 +69,13 @@ async function start() {
   try {
     config.validateProductionSecurity();
     await initDatabase();
+    
+    // Initialize services
+    const { initFcm } = require('./src/services/fcmService');
+    const { startWatchdog } = require('./src/services/watchdog');
+    initFcm();
+    startWatchdog();
+
     const server = app.listen(config.PORT, '0.0.0.0', () => {
       console.log(`=======================================================`);
       console.log(`🚀 Sologix Energy Backend API running on port ${config.PORT}`);

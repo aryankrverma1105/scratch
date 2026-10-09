@@ -79,11 +79,19 @@ async function recordLocation(req, res) {
   }
 }
 
+const { sendAlertPush } = require('../services/fcmService');
+
 // Notify GPS status changed (e.g. employee turned off GPS or permission revoked) (Requirement 14, 15)
 async function reportGpsStatus(req, res) {
   try {
     const userId = req.user.id;
-    const { status, message, latitude, longitude } = req.body; // status: 'DISABLED' | 'RESTORED' | 'PERMISSION_DENIED'
+    let { status, message, latitude, longitude } = req.body; // status: 'DISABLED' | 'RESTORED' | 'LOCATION_PERMISSION_REVOKED'
+
+    if (!status && req.body.alert_type) {
+      if (req.body.alert_type === 'GPS_DISABLED') status = 'DISABLED';
+      else if (req.body.alert_type === 'GPS_RESTORED') status = 'RESTORED';
+      else status = req.body.alert_type;
+    }
 
     if (!status) {
       return res.status(400).json({ error: 'Status is required' });
@@ -101,18 +109,58 @@ async function reportGpsStatus(req, res) {
       ? `${req.user.full_name} turned GPS/Location back ON`
       : `${req.user.full_name} revoked location permission`;
 
-    await db.run(
-      `INSERT INTO gps_alerts (user_id, alert_type, message, latitude, longitude, resolved)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
+    if (status === 'RESTORED') {
+      // 1. Resolve any previous open alerts for this user
+      await db.run(
+        `UPDATE gps_alerts SET resolved = 1 WHERE user_id = ? AND resolved = 0`,
+        [userId]
+      );
+
+      // Record RESTORED entry
+      await db.run(
+        `INSERT INTO gps_alerts (user_id, alert_type, message, latitude, longitude, resolved)
+         VALUES (?, 'GPS_RESTORED', ?, ?, ?, 1)`,
+        [userId, message || defaultMsg, latitude || null, longitude || null]
+      );
+
+      return res.status(200).json({
+        success: true,
+        resolved: true,
+        message: 'GPS status restored',
         alertType,
-        message || defaultMsg,
-        latitude || null,
-        longitude || null,
-        status === 'RESTORED' ? 1 : 0,
-      ]
-    );
+      });
+    } else {
+      // 2. Server deduplication: Check if an open alert of this type already exists for this user
+      const openAlert = await db.get(
+        `SELECT id FROM gps_alerts WHERE user_id = ? AND alert_type = ? AND resolved = 0 LIMIT 1`,
+        [userId, alertType]
+      );
+
+      if (openAlert) {
+        return res.status(200).json({
+          success: true,
+          deduped: true,
+          message: 'An open alert for this state already exists.',
+          alertType,
+        });
+      }
+
+      await db.run(
+        `INSERT INTO gps_alerts (user_id, alert_type, message, latitude, longitude, resolved)
+         VALUES (?, ?, ?, ?, ?, 0)`,
+        [userId, alertType, message || defaultMsg, latitude || null, longitude || null]
+      );
+
+      // Trigger push notification to admin
+      await sendAlertPush({
+        title: `GPS Alert: ${req.user.full_name}`,
+        body: message || defaultMsg,
+        data: {
+          userId: String(userId),
+          alertType,
+        },
+      });
+    }
 
     // Also insert a track marker noting GPS turned off/on
     if (latitude !== undefined && longitude !== undefined) {
@@ -127,16 +175,17 @@ async function reportGpsStatus(req, res) {
         [
           userId,
           activeAttendance ? activeAttendance.id : null,
-          latitude,
-          longitude,
+          parseFloat(latitude),
+          parseFloat(longitude),
           status === 'DISABLED' ? 1 : 0,
           new Date().toISOString(),
         ]
       );
     }
 
-    return res.json({
+    return res.status(201).json({
       success: true,
+      status: 'OPEN',
       message: 'GPS status alert registered',
       alertType,
     });

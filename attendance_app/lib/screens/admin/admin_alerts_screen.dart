@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
@@ -14,22 +15,32 @@ class AdminAlertsScreen extends StatefulWidget {
 class _AdminAlertsScreenState extends State<AdminAlertsScreen> {
   List<GpsAlert> _alerts = [];
   bool _isLoading = true;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadAlerts();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _loadAlerts(isBackground: true);
+    });
   }
 
-  Future<void> _loadAlerts() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadAlerts({bool isBackground = false}) async {
+    if (!isBackground) setState(() => _isLoading = true);
     try {
       final list = await ApiService().adminGetAlerts();
-      setState(() => _alerts = list);
+      if (mounted) setState(() => _alerts = list);
     } catch (e) {
       debugPrint('Error loading alerts: $e');
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && !isBackground) setState(() => _isLoading = false);
     }
   }
 
