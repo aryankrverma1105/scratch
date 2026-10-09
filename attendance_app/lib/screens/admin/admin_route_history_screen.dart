@@ -309,21 +309,47 @@ class _AdminRouteHistoryScreenState extends State<AdminRouteHistoryScreen> {
                       urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.sologixenergy.attendance',
                     ),
-                    PolylineLayer(
-                      polylines: [
-                        Polyline(
-                          points: polylineCoords,
-                          strokeWidth: 4.5,
-                          color: AppColors.info,
-                        ),
-                      ],
-                    ),
+                    if (polylineCoords.length >= 2)
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: polylineCoords,
+                            strokeWidth: 4.5,
+                            color: AppColors.info,
+                          ),
+                        ],
+                      ),
                     MarkerLayer(markers: markers),
                   ],
                 ),
 
                 if (_isLoading)
-                  const Center(child: CircularProgressIndicator(color: Colors.white)),
+                  const Center(child: CircularProgressIndicator(color: Colors.white))
+                else if (_routePoints.isEmpty)
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardDark.withValues(alpha: 0.92),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white12),
+                        boxShadow: const [
+                          BoxShadow(color: Colors.black54, blurRadius: 10, spreadRadius: 2),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.route_outlined, color: AppColors.textMuted, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'No route points logged for this date',
+                            style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
 
                 // Bottom Panel: Time Slider + Route Summary
                 Positioned(
