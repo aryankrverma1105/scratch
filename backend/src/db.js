@@ -131,19 +131,20 @@ async function initDatabase() {
         user_id INTEGER REFERENCES users(id),
         date VARCHAR(20) NOT NULL,
         check_in_time TIMESTAMP NOT NULL,
-        check_in_lat REAL NOT NULL,
-        check_in_lng REAL NOT NULL,
+        check_in_lat DOUBLE PRECISION NOT NULL,
+        check_in_lng DOUBLE PRECISION NOT NULL,
         check_in_accuracy REAL,
         check_in_is_mocked BOOLEAN DEFAULT FALSE,
         check_in_address TEXT,
         check_in_selfie VARCHAR(255),
         check_out_time TIMESTAMP,
-        check_out_lat REAL,
-        check_out_lng REAL,
+        check_out_lat DOUBLE PRECISION,
+        check_out_lng DOUBLE PRECISION,
         check_out_accuracy REAL,
         check_out_is_mocked BOOLEAN DEFAULT FALSE,
         check_out_address TEXT,
         check_out_selfie VARCHAR(255),
+        check_out_type VARCHAR(50) DEFAULT 'manual',
         status VARCHAR(50) DEFAULT 'checked_in',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )`
@@ -165,6 +166,7 @@ async function initDatabase() {
         check_out_is_mocked INTEGER DEFAULT 0,
         check_out_address TEXT,
         check_out_selfie TEXT,
+        check_out_type TEXT DEFAULT 'manual',
         status TEXT DEFAULT 'checked_in',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`;
@@ -175,8 +177,8 @@ async function initDatabase() {
         user_id INTEGER REFERENCES users(id),
         attendance_id INTEGER REFERENCES attendance(id),
         client_point_id VARCHAR(100),
-        latitude REAL NOT NULL,
-        longitude REAL NOT NULL,
+        latitude DOUBLE PRECISION NOT NULL,
+        longitude DOUBLE PRECISION NOT NULL,
         accuracy REAL,
         speed REAL,
         altitude REAL,
@@ -207,8 +209,8 @@ async function initDatabase() {
         user_id INTEGER REFERENCES users(id),
         alert_type VARCHAR(100) NOT NULL,
         message TEXT,
-        latitude REAL,
-        longitude REAL,
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
         resolved BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )`
@@ -223,36 +225,77 @@ async function initDatabase() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`;
 
+  const migrationsTable = isPostgres
+    ? `CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )`
+    : `CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`;
+
   await run(usersTable);
   await run(attendanceTable);
   await run(locationTracksTable);
   await run(gpsAlertsTable);
+  await run(migrationsTable);
 
-  // Schema migrations for existing installations
-  try {
-    await run(`ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0`);
-  } catch (_) {}
-  try {
-    await run(`ALTER TABLE attendance ADD COLUMN check_in_accuracy REAL`);
-  } catch (_) {}
-  try {
-    await run(`ALTER TABLE attendance ADD COLUMN check_in_is_mocked INTEGER DEFAULT 0`);
-  } catch (_) {}
-  try {
-    await run(`ALTER TABLE attendance ADD COLUMN check_out_accuracy REAL`);
-  } catch (_) {}
-  try {
-    await run(`ALTER TABLE attendance ADD COLUMN check_out_is_mocked INTEGER DEFAULT 0`);
-  } catch (_) {}
-  try {
-    await run(`ALTER TABLE location_tracks ADD COLUMN is_mocked INTEGER DEFAULT 0`);
-  } catch (_) {}
-  try {
-    await run(`ALTER TABLE location_tracks ADD COLUMN client_point_id TEXT`);
-  } catch (_) {}
-  try {
-    await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_client_pt ON location_tracks(user_id, client_point_id) WHERE client_point_id IS NOT NULL`);
-  } catch (_) {}
+  // Simple Versioned Migrations Runner
+  const migrations = [
+    {
+      version: 1,
+      name: 'add_user_must_change_password',
+      up: async () => {
+        try { await run(`ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0`); } catch (_) {}
+      },
+    },
+    {
+      version: 2,
+      name: 'add_attendance_and_tracking_accuracy_mock_columns',
+      up: async () => {
+        try { await run(`ALTER TABLE attendance ADD COLUMN check_in_accuracy REAL`); } catch (_) {}
+        try { await run(`ALTER TABLE attendance ADD COLUMN check_in_is_mocked INTEGER DEFAULT 0`); } catch (_) {}
+        try { await run(`ALTER TABLE attendance ADD COLUMN check_out_accuracy REAL`); } catch (_) {}
+        try { await run(`ALTER TABLE attendance ADD COLUMN check_out_is_mocked INTEGER DEFAULT 0`); } catch (_) {}
+        try { await run(`ALTER TABLE attendance ADD COLUMN check_out_type TEXT DEFAULT 'manual'`); } catch (_) {}
+        try { await run(`ALTER TABLE location_tracks ADD COLUMN is_mocked INTEGER DEFAULT 0`); } catch (_) {}
+        try { await run(`ALTER TABLE location_tracks ADD COLUMN client_point_id TEXT`); } catch (_) {}
+      },
+    },
+    {
+      version: 3,
+      name: 'add_performance_and_idempotency_indexes',
+      up: async () => {
+        try {
+          await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_client_pt ON location_tracks(user_id, client_point_id) WHERE client_point_id IS NOT NULL`);
+        } catch (_) {}
+        try {
+          await run(`CREATE INDEX IF NOT EXISTS idx_tracks_user_ts ON location_tracks(user_id, timestamp)`);
+        } catch (_) {}
+        try {
+          await run(`CREATE INDEX IF NOT EXISTS idx_tracks_att_id ON location_tracks(attendance_id)`);
+        } catch (_) {}
+        try {
+          await run(`CREATE INDEX IF NOT EXISTS idx_att_user_date ON attendance(user_id, date)`);
+        } catch (_) {}
+        try {
+          await run(`CREATE INDEX IF NOT EXISTS idx_att_status ON attendance(status)`);
+        } catch (_) {}
+      },
+    },
+  ];
+
+  for (const m of migrations) {
+    const applied = await get('SELECT version FROM schema_migrations WHERE version = ?', [m.version]);
+    if (!applied) {
+      await m.up();
+      await run('INSERT INTO schema_migrations (version, name) VALUES (?, ?)', [m.version, m.name]);
+      console.log(` Migration v${m.version} applied: ${m.name}`);
+    }
+  }
 
   // Seed Admin on first run with random password if no admin exists
   const existingAdmin = await get("SELECT id FROM users WHERE role = 'admin' LIMIT 1");

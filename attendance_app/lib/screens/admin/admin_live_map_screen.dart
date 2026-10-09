@@ -7,6 +7,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
 import '../../models/location_model.dart';
 import 'admin_route_history_screen.dart';
+import 'admin_attendance_screen.dart';
 
 class AdminLiveMapScreen extends StatefulWidget {
   const AdminLiveMapScreen({super.key});
@@ -87,21 +88,37 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
 
       final isGpsOff = emp.isGpsOff;
       final isWorking = emp.isWorking;
-
       final isMocked = emp.isMocked;
 
-      Color markerColor = isMocked
-          ? Colors.deepOrange
-          : isGpsOff
-              ? AppColors.error
-              : isWorking
-                  ? AppColors.success
-                  : Colors.grey;
+      final int minutesAgo = emp.lastLocationTime != null
+          ? DateTime.now().toUtc().difference(emp.lastLocationTime!.toUtc()).inMinutes
+          : 999;
+
+      final String lastSeenText = minutesAgo == 0
+          ? 'Active now'
+          : minutesAgo < 60
+              ? '${minutesAgo}m ago'
+              : '${minutesAgo ~/ 60}h ago';
+
+      Color markerColor;
+      if (isMocked) {
+        markerColor = Colors.deepOrange;
+      } else if (isGpsOff) {
+        markerColor = AppColors.error;
+      } else if (!isWorking) {
+        markerColor = Colors.grey;
+      } else if (minutesAgo < 5) {
+        markerColor = AppColors.success; // Green (< 5m)
+      } else if (minutesAgo < 15) {
+        markerColor = Colors.amber.shade700; // Orange (5-15m)
+      } else {
+        markerColor = Colors.grey; // Grey (> 15m)
+      }
 
       markers.add(
         Marker(
           point: LatLng(emp.lastLatitude!, emp.lastLongitude!),
-          width: 60,
+          width: 75,
           height: 60,
           child: GestureDetector(
             onTap: () => _showEmployeeDetails(emp),
@@ -123,18 +140,18 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                             ? Icons.location_off
                             : Icons.person_pin,
                     color: Colors.white,
-                    size: 24,
+                    size: 22,
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                   decoration: BoxDecoration(
-                    color: isMocked ? Colors.deepOrange.shade900 : Colors.black87,
+                    color: markerColor.withOpacity(0.9),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    isMocked ? '⚠️ MOCK' : emp.fullName.split(' ').first,
-                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    isMocked ? '⚠️ MOCK' : '${emp.fullName.split(' ').first} • $lastSeenText',
+                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
                   ),
                 ),
               ],
@@ -205,9 +222,23 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                               ),
                             ],
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.refresh, color: Colors.white70),
-                            onPressed: () => _fetchLiveLocations(),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.assignment_outlined, color: Colors.white70),
+                                tooltip: 'Attendance Log',
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const AdminAttendanceScreen()),
+                                  );
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.refresh, color: Colors.white70),
+                                onPressed: () => _fetchLiveLocations(),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -309,11 +340,13 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
                         if (_selectedEmployee!.lastLocationTime != null)
-                          Text(
-                            'Last Ping: ${DateFormat('hh:mm:ss a').format(_selectedEmployee!.lastLocationTime!)}',
-                            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                          Expanded(
+                            child: Text(
+                              'Last Seen: ${DateTime.now().toUtc().difference(_selectedEmployee!.lastLocationTime!.toUtc()).inMinutes == 0 ? "Just now" : "${DateTime.now().toUtc().difference(_selectedEmployee!.lastLocationTime!.toUtc()).inMinutes}m ago"} (${DateFormat('hh:mm a').format(_selectedEmployee!.lastLocationTime!)})',
+                              style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                       ],
                     ),

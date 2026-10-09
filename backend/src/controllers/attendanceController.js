@@ -1,4 +1,6 @@
 const db = require('../db');
+const fs = require('fs');
+const { getCompanyDate } = require('../utils/timeUtils');
 
 // Check current attendance state for logged in user
 async function getCurrentStatus(req, res) {
@@ -10,7 +12,7 @@ async function getCurrentStatus(req, res) {
     );
 
     // Also get last completed attendance today if any
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getCompanyDate();
     const todayLatest = await db.get(
       "SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY id DESC LIMIT 1",
       [userId, today]
@@ -25,8 +27,6 @@ async function getCurrentStatus(req, res) {
     return res.status(500).json({ error: 'Failed to fetch status', details: error.message });
   }
 }
-
-const fs = require('fs');
 
 // Helper to remove orphan files if request is rejected or fails
 function cleanupOrphanFile(file) {
@@ -54,25 +54,52 @@ async function checkIn(req, res) {
       return res.status(400).json({ error: 'Selfie photo is required for check-in' });
     }
 
-    // Check if already checked in
+    const today = getCompanyDate();
+    const nowIso = new Date().toISOString();
+
+    // Check if user has an active check-in
     const existingActive = await db.get(
-      "SELECT id FROM attendance WHERE user_id = ? AND status = 'checked_in' LIMIT 1",
+      "SELECT * FROM attendance WHERE user_id = ? AND status = 'checked_in' ORDER BY id DESC LIMIT 1",
       [userId]
     );
 
     if (existingActive) {
-      // Delete saved file when controller rejects request to prevent orphan files
-      cleanupOrphanFile(req.file);
-      return res.status(400).json({
-        error: 'You are already checked in. Please check out first.',
-        attendanceId: existingActive.id,
-      });
+      if (existingActive.date !== today) {
+        // Auto-close open attendance from previous day first
+        console.log(`Auto-closing previous day (${existingActive.date}) shift for user ${userId}`);
+        const lastPoint = await db.get(
+          `SELECT latitude, longitude, accuracy FROM location_tracks WHERE attendance_id = ? ORDER BY id DESC LIMIT 1`,
+          [existingActive.id]
+        );
+        const autoLat = lastPoint ? lastPoint.latitude : existingActive.check_in_lat;
+        const autoLng = lastPoint ? lastPoint.longitude : existingActive.check_in_lng;
+        await db.run(
+          `UPDATE attendance SET
+             check_out_time = ?,
+             check_out_lat = ?,
+             check_out_lng = ?,
+             check_out_accuracy = ?,
+             check_out_type = 'auto_previous_day',
+             status = 'auto_checked_out'
+           WHERE id = ?`,
+          [nowIso, autoLat, autoLng, lastPoint ? lastPoint.accuracy : null, existingActive.id]
+        );
+        await db.run(
+          `INSERT INTO gps_alerts (user_id, alert_type, message, latitude, longitude, resolved)
+           VALUES (?, 'AUTO_CHECKOUT', ?, ?, ?, 1)`,
+          [userId, `Auto-closed open shift from previous day (${existingActive.date}) on new check-in`, autoLat, autoLng]
+        );
+      } else {
+        // Still checked in today
+        cleanupOrphanFile(req.file);
+        return res.status(400).json({
+          error: 'You are already checked in. Please check out first.',
+          attendanceId: existingActive.id,
+        });
+      }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const nowIso = new Date().toISOString();
     const selfieFilename = req.file.filename;
-
     const latNum = parseFloat(latitude);
     const lngNum = parseFloat(longitude);
     const accNum = accuracy !== undefined && accuracy !== null && accuracy !== '' ? parseFloat(accuracy) : null;
@@ -161,6 +188,7 @@ async function checkOut(req, res) {
         check_out_is_mocked = ?,
         check_out_address = ?, 
         check_out_selfie = ?, 
+        check_out_type = 'manual',
         status = 'checked_out'
        WHERE id = ?`,
       [

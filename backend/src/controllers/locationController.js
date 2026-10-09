@@ -1,4 +1,5 @@
 const db = require('../db');
+const { normalizeTimestamp } = require('../utils/timeUtils');
 
 // Continuous location ping (single point or batch of points)
 async function recordLocation(req, res) {
@@ -17,6 +18,12 @@ async function recordLocation(req, res) {
       for (const loc of body.locations) {
         if (loc.latitude !== undefined && loc.longitude !== undefined) {
           const isMock = loc.is_mocked === true || loc.is_mocked === 'true' || loc.is_mocked === 1 || loc.is_mocked === '1' ? 1 : 0;
+          let safeTs;
+          try {
+            safeTs = normalizeTimestamp(loc.timestamp);
+          } catch (_) {
+            continue; // Skip invalid or future timestamps
+          }
           await db.run(
             `INSERT INTO location_tracks (
               user_id, attendance_id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, is_mocked, timestamp
@@ -32,7 +39,7 @@ async function recordLocation(req, res) {
               loc.battery_level || null,
               loc.is_gps_off ? 1 : 0,
               isMock,
-              loc.timestamp || new Date().toISOString(),
+              safeTs,
             ]
           );
         }
@@ -45,6 +52,13 @@ async function recordLocation(req, res) {
 
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({ error: 'Latitude and longitude are required' });
+    }
+
+    let normalizedTs;
+    try {
+      normalizedTs = normalizeTimestamp(timestamp);
+    } catch (tsErr) {
+      return res.status(400).json({ error: tsErr.message });
     }
 
     const isMockSingle = is_mocked === true || is_mocked === 'true' || is_mocked === 1 || is_mocked === '1' ? 1 : 0;
@@ -64,7 +78,7 @@ async function recordLocation(req, res) {
         battery_level || null,
         is_gps_off ? 1 : 0,
         isMockSingle,
-        timestamp || new Date().toISOString(),
+        normalizedTs,
       ]
     );
 
@@ -217,7 +231,12 @@ async function recordLocationBatch(req, res) {
       if (pt.latitude === undefined || pt.longitude === undefined) continue;
 
       const clientPointId = pt.client_point_id || null;
-      const capturedAt = pt.captured_at || pt.timestamp || new Date().toISOString();
+      let capturedAt;
+      try {
+        capturedAt = normalizeTimestamp(pt.captured_at || pt.timestamp);
+      } catch (_) {
+        continue; // Skip points with future/invalid timestamps
+      }
       const isMock = pt.is_mocked === true || pt.is_mocked === 'true' || pt.is_mocked === 1 || pt.is_mocked === '1' ? 1 : 0;
       const isGpsOff = pt.is_gps_off ? 1 : 0;
       const lat = parseFloat(pt.latitude);

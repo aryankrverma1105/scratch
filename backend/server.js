@@ -73,8 +73,10 @@ async function start() {
     // Initialize services
     const { initFcm } = require('./src/services/fcmService');
     const { startWatchdog } = require('./src/services/watchdog');
+    const { initAutoCheckoutCron } = require('./src/services/autoCheckout');
     initFcm();
     startWatchdog();
+    initAutoCheckoutCron();
 
     const server = app.listen(config.PORT, '0.0.0.0', () => {
       console.log(`=======================================================`);

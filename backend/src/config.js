@@ -30,5 +30,6 @@ module.exports = {
   ADMIN_DEFAULT_EMAIL: process.env.ADMIN_DEFAULT_EMAIL || 'admin@company.com',
   ADMIN_DEFAULT_NAME: process.env.ADMIN_DEFAULT_NAME || 'System Administrator',
   COMPANY_TZ: process.env.COMPANY_TZ || 'Asia/Kolkata',
+  AUTO_CHECKOUT_TIME: process.env.AUTO_CHECKOUT_TIME || '21:00',
   validateProductionSecurity,
 };

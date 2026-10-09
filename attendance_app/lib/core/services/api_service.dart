@@ -494,4 +494,45 @@ class ApiService {
       await _dio.post('/api/admin/alerts/$alertId/resolve');
     } catch (_) {}
   }
+
+  Future<UserModel> adminUpdateUser(
+    int userId, {
+    String? fullName,
+    String? role,
+    String? department,
+    String? phone,
+    bool? isActive,
+    String? password,
+  }) async {
+    try {
+      final data = <String, dynamic>{};
+      if (fullName != null) data['full_name'] = fullName;
+      if (role != null) data['role'] = role;
+      if (department != null) data['department'] = department;
+      if (phone != null) data['phone'] = phone;
+      if (isActive != null) data['is_active'] = isActive;
+      if (password != null && password.isNotEmpty) data['password'] = password;
+
+      final response = await _dio.put('/api/admin/users/$userId', data: data);
+      return UserModel.fromJson(response.data['user']);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to update user');
+    }
+  }
+
+  Future<List<AttendanceRecord>> adminGetAttendance({String? date, int? userId}) async {
+    try {
+      final query = <String, dynamic>{};
+      if (date != null) query['date'] = date;
+      if (userId != null) query['userId'] = userId;
+
+      final response = await _dio.get('/api/admin/attendance', queryParameters: query);
+      final list = (response.data['records'] as List)
+          .map((r) => AttendanceRecord.fromJson(r))
+          .toList();
+      return list;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to load attendance');
+    }
+  }
 }

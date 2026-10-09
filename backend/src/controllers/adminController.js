@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const db = require('../db');
+const { getCompanyDate, getDayRangeUtc } = require('../utils/timeUtils');
 
 // List all users
 async function listUsers(req, res) {
@@ -73,7 +74,7 @@ async function updateUser(req, res) {
     if (password) {
       const salt = await bcrypt.genSalt(10);
       const hash = await bcrypt.hash(password, salt);
-      await db.run('UPDATE users SET password_hash = ? WHERE id = ?', [hash, userId]);
+      await db.run('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?', [hash, userId]);
     }
 
     const updates = [];
@@ -152,7 +153,7 @@ async function getLiveLocations(req, res) {
 async function getUserRouteHistory(req, res) {
   try {
     const userId = req.params.id;
-    const date = req.query.date || new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const date = req.query.date || getCompanyDate(); // YYYY-MM-DD
 
     const user = await db.get('SELECT id, full_name, email, department FROM users WHERE id = ?', [userId]);
     if (!user) {
@@ -165,14 +166,14 @@ async function getUserRouteHistory(req, res) {
       [userId, date]
     );
 
-    // Get all GPS coordinates logged on that date
-    // Date formatted as 'YYYY-MM-DD%'
+    // Get all GPS coordinates logged on that date using timezone-aware UTC range query
+    const [startUtc, nextDayUtc] = getDayRangeUtc(date);
     const tracks = await db.query(
       `SELECT id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, is_mocked, timestamp
        FROM location_tracks
-       WHERE user_id = ? AND timestamp LIKE ?
+       WHERE user_id = ? AND timestamp >= ? AND timestamp < ?
        ORDER BY timestamp ASC`,
-      [userId, `${date}%`]
+      [userId, startUtc, nextDayUtc]
     );
 
     return res.json({
