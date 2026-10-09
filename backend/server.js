@@ -78,7 +78,7 @@ async function start() {
     startWatchdog();
     initAutoCheckoutCron();
 
-    const bindHost = process.env.HOST || '127.0.0.1';
+    const bindHost = process.env.HOST || '0.0.0.0';
     const server = app.listen(config.PORT, bindHost, () => {
       console.log(`=======================================================`);
       console.log(`🚀 Sologix Energy Backend API running on port ${config.PORT} (${bindHost})`);
