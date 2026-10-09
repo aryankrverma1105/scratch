@@ -88,17 +88,21 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
       final isGpsOff = emp.isGpsOff;
       final isWorking = emp.isWorking;
 
-      Color markerColor = isGpsOff
-          ? AppColors.error
-          : isWorking
-              ? AppColors.success
-              : Colors.grey;
+      final isMocked = emp.isMocked;
+
+      Color markerColor = isMocked
+          ? Colors.deepOrange
+          : isGpsOff
+              ? AppColors.error
+              : isWorking
+                  ? AppColors.success
+                  : Colors.grey;
 
       markers.add(
         Marker(
           point: LatLng(emp.lastLatitude!, emp.lastLongitude!),
-          width: 55,
-          height: 55,
+          width: 60,
+          height: 60,
           child: GestureDetector(
             onTap: () => _showEmployeeDetails(emp),
             child: Column(
@@ -113,7 +117,11 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                     ],
                   ),
                   child: Icon(
-                    isGpsOff ? Icons.location_off : Icons.person_pin,
+                    isMocked
+                        ? Icons.warning_rounded
+                        : isGpsOff
+                            ? Icons.location_off
+                            : Icons.person_pin,
                     color: Colors.white,
                     size: 24,
                   ),
@@ -121,11 +129,11 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.black87,
+                    color: isMocked ? Colors.deepOrange.shade900 : Colors.black87,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    emp.fullName.split(' ').first,
+                    isMocked ? '⚠️ MOCK' : emp.fullName.split(' ').first,
                     style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -271,25 +279,31 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: _selectedEmployee!.isGpsOff
-                                ? AppColors.error.withOpacity(0.2)
-                                : _selectedEmployee!.isWorking
-                                    ? AppColors.success.withOpacity(0.2)
-                                    : Colors.white10,
+                            color: _selectedEmployee!.isMocked
+                                ? Colors.deepOrange.withOpacity(0.2)
+                                : _selectedEmployee!.isGpsOff
+                                    ? AppColors.error.withOpacity(0.2)
+                                    : _selectedEmployee!.isWorking
+                                        ? AppColors.success.withOpacity(0.2)
+                                        : Colors.white10,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
-                            _selectedEmployee!.isGpsOff
-                                ? '⚠️ GPS OFF'
-                                : _selectedEmployee!.isWorking
-                                    ? '🟢 On Duty Tracking'
-                                    : '⚪ Checked Out',
+                            _selectedEmployee!.isMocked
+                                ? '⚠️ FAKE / MOCK GPS'
+                                : _selectedEmployee!.isGpsOff
+                                    ? '⚠️ GPS OFF'
+                                    : _selectedEmployee!.isWorking
+                                        ? '🟢 On Duty Tracking'
+                                        : '⚪ Checked Out',
                             style: TextStyle(
-                              color: _selectedEmployee!.isGpsOff
-                                  ? AppColors.error
-                                  : _selectedEmployee!.isWorking
-                                      ? AppColors.success
-                                      : AppColors.textMuted,
+                              color: _selectedEmployee!.isMocked
+                                  ? Colors.deepOrange
+                                  : _selectedEmployee!.isGpsOff
+                                      ? AppColors.error
+                                      : _selectedEmployee!.isWorking
+                                          ? AppColors.success
+                                          : AppColors.textMuted,
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),

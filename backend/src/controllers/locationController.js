@@ -16,10 +16,11 @@ async function recordLocation(req, res) {
     if (Array.isArray(body.locations)) {
       for (const loc of body.locations) {
         if (loc.latitude !== undefined && loc.longitude !== undefined) {
+          const isMock = loc.is_mocked === true || loc.is_mocked === 'true' || loc.is_mocked === 1 || loc.is_mocked === '1' ? 1 : 0;
           await db.run(
             `INSERT INTO location_tracks (
-              user_id, attendance_id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, timestamp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              user_id, attendance_id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, is_mocked, timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               userId,
               activeAttendance ? activeAttendance.id : null,
@@ -30,6 +31,7 @@ async function recordLocation(req, res) {
               loc.altitude || null,
               loc.battery_level || null,
               loc.is_gps_off ? 1 : 0,
+              isMock,
               loc.timestamp || new Date().toISOString(),
             ]
           );
@@ -39,16 +41,18 @@ async function recordLocation(req, res) {
     }
 
     // Single location point
-    const { latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, timestamp } = body;
+    const { latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, is_mocked, timestamp } = body;
 
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({ error: 'Latitude and longitude are required' });
     }
 
+    const isMockSingle = is_mocked === true || is_mocked === 'true' || is_mocked === 1 || is_mocked === '1' ? 1 : 0;
+
     await db.run(
       `INSERT INTO location_tracks (
-        user_id, attendance_id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, timestamp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        user_id, attendance_id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, is_mocked, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         activeAttendance ? activeAttendance.id : null,
@@ -59,6 +63,7 @@ async function recordLocation(req, res) {
         altitude || null,
         battery_level || null,
         is_gps_off ? 1 : 0,
+        isMockSingle,
         timestamp || new Date().toISOString(),
       ]
     );

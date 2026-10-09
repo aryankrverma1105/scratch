@@ -276,9 +276,19 @@ class _AdminRouteHistoryScreenState extends State<AdminRouteHistoryScreen> {
                           children: [
                             const Icon(Icons.timeline, color: AppColors.info, size: 22),
                             const SizedBox(width: 10),
-                            Text(
-                              '${_routePoints.length} GPS Trail Points Logged',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${_routePoints.length} GPS Trail Points Logged',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                if (_routePoints.any((p) => p.isMocked))
+                                  Text(
+                                    '⚠️ ${_routePoints.where((p) => p.isMocked).length} Fake / Mock GPS points flagged',
+                                    style: const TextStyle(color: Colors.deepOrange, fontWeight: FontWeight.bold, fontSize: 11),
+                                  ),
+                              ],
                             ),
                           ],
                         ),

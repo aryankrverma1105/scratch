@@ -28,28 +28,39 @@ const upload = multer({
   },
 });
 
-// Middleware that compresses and resizes selfie to ~30KB-70KB before saving
+// Middleware that compresses and resizes selfie to ~40KB-80KB before saving
 async function compressSelfie(req, res, next) {
   if (!req.file || !req.file.buffer) {
     return next();
   }
 
-  const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-  const filename = `selfie-${uniqueSuffix}.jpg`;
-  const outputPath = path.join(config.SELFIE_DIR, filename);
-
   const originalSizeBytes = req.file.buffer.length;
 
   try {
-    // Resize to max 640x640, rotate correctly from EXIF, compress to JPEG quality 72 with mozjpeg
-    await sharp(req.file.buffer)
+    // 1. Inspect image metadata with sharp - reject non-images or corrupt files
+    const image = sharp(req.file.buffer);
+    const metadata = await image.metadata();
+
+    const allowedFormats = ['jpeg', 'jpg', 'png', 'webp', 'heif', 'tiff'];
+    if (!metadata.format || !allowedFormats.includes(metadata.format.toLowerCase())) {
+      return res.status(400).json({
+        error: 'Invalid image format. Genuine camera selfie (JPEG, PNG, WebP) is required.',
+      });
+    }
+
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const filename = `selfie-${uniqueSuffix}.jpg`;
+    const outputPath = path.join(config.SELFIE_DIR, filename);
+
+    // 2. Auto-rotate from EXIF, resize to max 800x800, compress JPEG quality 78, strip EXIF/GPS
+    await image
       .rotate() // Auto-orient based on camera EXIF
-      .resize(640, 640, {
+      .resize(800, 800, {
         fit: 'inside',
         withoutEnlargement: true,
       })
       .jpeg({
-        quality: 72,
+        quality: 78,
         progressive: true,
         mozjpeg: true,
       })
@@ -70,15 +81,12 @@ async function compressSelfie(req, res, next) {
     req.file.mimetype = 'image/jpeg';
     next();
   } catch (err) {
-    console.error('Sharp compression warning, falling back to raw save:', err.message);
-    try {
-      fs.writeFileSync(outputPath, req.file.buffer);
-      req.file.filename = filename;
-      req.file.path = outputPath;
-      next();
-    } catch (writeErr) {
-      next(writeErr);
-    }
+    console.error('Sharp validation/compression failed:', err.message);
+    // Requirement: Validate with sharp metadata; reject non-images (400). Remove fallback to raw save.
+    return res.status(400).json({
+      error: 'Unreadable or invalid image file. Please take a clear camera photo.',
+      details: err.message,
+    });
   }
 }
 

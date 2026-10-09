@@ -123,6 +123,7 @@ async function getLiveLocations(req, res) {
         t.accuracy as last_accuracy,
         t.speed as last_speed,
         t.is_gps_off as last_is_gps_off,
+        t.is_mocked as last_is_mocked,
         t.timestamp as last_location_time
       FROM users u
       LEFT JOIN attendance a ON a.user_id = u.id AND a.status = 'checked_in'
@@ -167,7 +168,7 @@ async function getUserRouteHistory(req, res) {
     // Get all GPS coordinates logged on that date
     // Date formatted as 'YYYY-MM-DD%'
     const tracks = await db.query(
-      `SELECT id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, timestamp
+      `SELECT id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, is_mocked, timestamp
        FROM location_tracks
        WHERE user_id = ? AND timestamp LIKE ?
        ORDER BY timestamp ASC`,

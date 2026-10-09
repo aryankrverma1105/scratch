@@ -26,13 +26,27 @@ async function getCurrentStatus(req, res) {
   }
 }
 
+const fs = require('fs');
+
+// Helper to remove orphan files if request is rejected or fails
+function cleanupOrphanFile(file) {
+  if (file && file.path) {
+    fs.unlink(file.path, (err) => {
+      if (err && err.code !== 'ENOENT') {
+        console.error('Failed to remove orphan selfie file:', file.path, err.message);
+      }
+    });
+  }
+}
+
 // Check-in (Requirements 6, 7, 19)
 async function checkIn(req, res) {
   try {
     const userId = req.user.id;
-    const { latitude, longitude, address } = req.body;
+    const { latitude, longitude, address, accuracy, is_mocked } = req.body;
 
     if (latitude === undefined || longitude === undefined) {
+      cleanupOrphanFile(req.file);
       return res.status(400).json({ error: 'GPS coordinates (latitude, longitude) are required' });
     }
 
@@ -47,6 +61,8 @@ async function checkIn(req, res) {
     );
 
     if (existingActive) {
+      // Delete saved file when controller rejects request to prevent orphan files
+      cleanupOrphanFile(req.file);
       return res.status(400).json({
         error: 'You are already checked in. Please check out first.',
         attendanceId: existingActive.id,
@@ -57,16 +73,23 @@ async function checkIn(req, res) {
     const nowIso = new Date().toISOString();
     const selfieFilename = req.file.filename;
 
+    const latNum = parseFloat(latitude);
+    const lngNum = parseFloat(longitude);
+    const accNum = accuracy !== undefined && accuracy !== null && accuracy !== '' ? parseFloat(accuracy) : null;
+    const isMockedVal = is_mocked === true || is_mocked === 'true' || is_mocked === 1 || is_mocked === '1' ? 1 : 0;
+
     const result = await db.run(
       `INSERT INTO attendance (
-        user_id, date, check_in_time, check_in_lat, check_in_lng, check_in_address, check_in_selfie, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'checked_in')`,
+        user_id, date, check_in_time, check_in_lat, check_in_lng, check_in_accuracy, check_in_is_mocked, check_in_address, check_in_selfie, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_in')`,
       [
         userId,
         today,
         nowIso,
-        parseFloat(latitude),
-        parseFloat(longitude),
+        latNum,
+        lngNum,
+        accNum,
+        isMockedVal,
         address || 'Recorded location',
         selfieFilename,
       ]
@@ -77,9 +100,9 @@ async function checkIn(req, res) {
     // Also insert first location track point
     await db.run(
       `INSERT INTO location_tracks (
-        user_id, attendance_id, latitude, longitude, accuracy, timestamp
-      ) VALUES (?, ?, ?, ?, ?, ?)`,
-      [userId, attendanceId, parseFloat(latitude), parseFloat(longitude), 10.0, nowIso]
+        user_id, attendance_id, latitude, longitude, accuracy, is_mocked, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [userId, attendanceId, latNum, lngNum, accNum || 10.0, isMockedVal, nowIso]
     );
 
     const record = await db.get('SELECT * FROM attendance WHERE id = ?', [attendanceId]);
@@ -89,6 +112,7 @@ async function checkIn(req, res) {
       attendance: record,
     });
   } catch (error) {
+    cleanupOrphanFile(req.file);
     console.error('Check-in error:', error);
     return res.status(500).json({ error: 'Check-in failed', details: error.message });
   }
@@ -98,9 +122,10 @@ async function checkIn(req, res) {
 async function checkOut(req, res) {
   try {
     const userId = req.user.id;
-    const { latitude, longitude, address } = req.body;
+    const { latitude, longitude, address, accuracy, is_mocked } = req.body;
 
     if (latitude === undefined || longitude === undefined) {
+      cleanupOrphanFile(req.file);
       return res.status(400).json({ error: 'GPS coordinates (latitude, longitude) are required' });
     }
 
@@ -114,25 +139,36 @@ async function checkOut(req, res) {
     );
 
     if (!active) {
+      // Delete saved file when controller rejects request to prevent orphan files
+      cleanupOrphanFile(req.file);
       return res.status(400).json({ error: 'No active check-in found to check out from.' });
     }
 
     const nowIso = new Date().toISOString();
     const selfieFilename = req.file.filename;
 
+    const latNum = parseFloat(latitude);
+    const lngNum = parseFloat(longitude);
+    const accNum = accuracy !== undefined && accuracy !== null && accuracy !== '' ? parseFloat(accuracy) : null;
+    const isMockedVal = is_mocked === true || is_mocked === 'true' || is_mocked === 1 || is_mocked === '1' ? 1 : 0;
+
     await db.run(
       `UPDATE attendance SET 
         check_out_time = ?, 
         check_out_lat = ?, 
         check_out_lng = ?, 
+        check_out_accuracy = ?,
+        check_out_is_mocked = ?,
         check_out_address = ?, 
         check_out_selfie = ?, 
         status = 'checked_out'
        WHERE id = ?`,
       [
         nowIso,
-        parseFloat(latitude),
-        parseFloat(longitude),
+        latNum,
+        lngNum,
+        accNum,
+        isMockedVal,
         address || 'Recorded location',
         selfieFilename,
         active.id,
@@ -142,9 +178,9 @@ async function checkOut(req, res) {
     // Final location track point
     await db.run(
       `INSERT INTO location_tracks (
-        user_id, attendance_id, latitude, longitude, accuracy, timestamp
-      ) VALUES (?, ?, ?, ?, ?, ?)`,
-      [userId, active.id, parseFloat(latitude), parseFloat(longitude), 10.0, nowIso]
+        user_id, attendance_id, latitude, longitude, accuracy, is_mocked, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [userId, active.id, latNum, lngNum, accNum || 10.0, isMockedVal, nowIso]
     );
 
     const updated = await db.get('SELECT * FROM attendance WHERE id = ?', [active.id]);
@@ -154,6 +190,7 @@ async function checkOut(req, res) {
       attendance: updated,
     });
   } catch (error) {
+    cleanupOrphanFile(req.file);
     console.error('Check-out error:', error);
     return res.status(500).json({ error: 'Check-out failed', details: error.message });
   }

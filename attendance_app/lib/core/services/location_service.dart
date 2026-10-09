@@ -3,6 +3,42 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'api_service.dart';
 
+// Phase 3: Structured GPS acquisition result & exceptions
+class AttendanceGpsResult {
+  final Position position;
+  final bool isLowAccuracy;
+  final bool isMocked;
+  final String? warningMessage;
+
+  AttendanceGpsResult({
+    required this.position,
+    required this.isLowAccuracy,
+    required this.isMocked,
+    this.warningMessage,
+  });
+}
+
+class GpsDisabledException implements Exception {
+  final String message;
+  GpsDisabledException([this.message = 'GPS / Location is turned OFF. Please turn on Location in device settings.']);
+  @override
+  String toString() => message;
+}
+
+class LocationPermissionDeniedException implements Exception {
+  final String message;
+  LocationPermissionDeniedException([this.message = 'Location permission is denied. Location access is mandatory for duty tracking.']);
+  @override
+  String toString() => message;
+}
+
+class GpsTimeoutException implements Exception {
+  final String message;
+  GpsTimeoutException([this.message = 'GPS signal acquisition timed out. Please check that you are in an open area.']);
+  @override
+  String toString() => message;
+}
+
 class LocationService {
   static final LocationService _instance = LocationService._internal();
   factory LocationService() => _instance;
@@ -90,22 +126,95 @@ class LocationService {
     return true;
   }
 
-  // Get current position once (for check-in / check-out)
-  Future<Position?> getCurrentPosition() async {
-    final hasPermission = await checkAndRequestPermissions();
-    if (!hasPermission) return null;
+  // Phase 3: Robust GPS acquisition with fresh last-known position, timeLimit, and mock detection
+  Future<AttendanceGpsResult> getAttendancePosition({required bool isCheckOut}) async {
+    // 1. Hardware GPS check
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    isGpsEnabledNotifier.value = serviceEnabled;
+    if (!serviceEnabled) {
+      throw GpsDisabledException('GPS / Location is turned OFF. Please enable Location in quick settings.');
+    }
 
+    // 2. Permission check
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        throw LocationPermissionDeniedException('Location permissions are denied. Location access is required.');
+      }
+    } else if (permission == LocationPermission.deniedForever) {
+      throw LocationPermissionDeniedException('Location permissions are permanently denied. Please enable them in app settings.');
+    }
+
+    Position? acquiredPos;
+
+    // 3. Try fresh last-known position (< 2 min, accuracy < 50 m)
     try {
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 15),
-        ),
-      );
-      currentPositionNotifier.value = pos;
-      return pos;
-    } catch (e) {
-      debugPrint('Error getting current position: $e');
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null) {
+        final age = DateTime.now().difference(lastKnown.timestamp);
+        if (age.inMinutes < 2 && lastKnown.accuracy > 0 && lastKnown.accuracy <= 50) {
+          acquiredPos = lastKnown;
+        }
+      }
+    } catch (_) {}
+
+    // 4. If no fresh last-known position, acquire via getCurrentPosition with 10s timeLimit
+    if (acquiredPos == null) {
+      try {
+        acquiredPos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 10),
+          ),
+        );
+      } on TimeoutException {
+        // Timeout occurred: try fallback to any last-known position
+        final fallback = await Geolocator.getLastKnownPosition();
+        if (fallback != null) {
+          acquiredPos = fallback;
+        } else if (isCheckOut) {
+          // Never block check-out on poor fix if any position can be constructed
+          throw GpsTimeoutException('GPS signal timed out. Please step near a window or outdoors to complete check-out.');
+        } else {
+          throw GpsTimeoutException('GPS signal timed out. Please check your signal and step into an open area.');
+        }
+      } catch (e) {
+        final fallback = await Geolocator.getLastKnownPosition();
+        if (fallback != null) {
+          acquiredPos = fallback;
+        } else {
+          throw GpsTimeoutException('Unable to acquire GPS fix: ${e.toString()}');
+        }
+      }
+    }
+
+    currentPositionNotifier.value = acquiredPos;
+
+    final bool isLowAccuracy = acquiredPos.accuracy > 50 || acquiredPos.accuracy <= 0;
+    final bool isMocked = acquiredPos.isMocked;
+
+    String? warning;
+    if (isMocked) {
+      warning = '⚠️ Mock location (Fake GPS) detected!';
+    } else if (isLowAccuracy) {
+      warning = 'Low GPS accuracy (${acquiredPos.accuracy.toStringAsFixed(0)}m). Recorded with low-accuracy flag.';
+    }
+
+    return AttendanceGpsResult(
+      position: acquiredPos,
+      isLowAccuracy: isLowAccuracy,
+      isMocked: isMocked,
+      warningMessage: warning,
+    );
+  }
+
+  // Get current position once (fallback helper)
+  Future<Position?> getCurrentPosition() async {
+    try {
+      final res = await getAttendancePosition(isCheckOut: false);
+      return res.position;
+    } catch (_) {
       return null;
     }
   }

@@ -285,48 +285,62 @@ class ApiService {
   Future<AttendanceRecord> checkIn({
     required double latitude,
     required double longitude,
+    double? accuracy,
+    bool isMocked = false,
     String? address,
     required File selfieFile,
   }) async {
     try {
-      final formData = FormData.fromMap({
+      final formMap = <String, dynamic>{
         'latitude': latitude.toString(),
         'longitude': longitude.toString(),
+        'is_mocked': isMocked.toString(),
         'address': address ?? 'Lat: $latitude, Lng: $longitude',
         'selfie': await MultipartFile.fromFile(
           selfieFile.path,
           filename: 'checkin_${DateTime.now().millisecondsSinceEpoch}.jpg',
         ),
-      });
+      };
+      if (accuracy != null) {
+        formMap['accuracy'] = accuracy.toString();
+      }
+      final formData = FormData.fromMap(formMap);
 
       final response = await _dio.post('/api/attendance/check-in', data: formData);
       return AttendanceRecord.fromJson(response.data['attendance']);
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Check-in failed');
+      throw Exception(e.response?.data?['error'] ?? formatDioError(e));
     }
   }
 
   Future<AttendanceRecord> checkOut({
     required double latitude,
     required double longitude,
+    double? accuracy,
+    bool isMocked = false,
     String? address,
     required File selfieFile,
   }) async {
     try {
-      final formData = FormData.fromMap({
+      final formMap = <String, dynamic>{
         'latitude': latitude.toString(),
         'longitude': longitude.toString(),
+        'is_mocked': isMocked.toString(),
         'address': address ?? 'Lat: $latitude, Lng: $longitude',
         'selfie': await MultipartFile.fromFile(
           selfieFile.path,
           filename: 'checkout_${DateTime.now().millisecondsSinceEpoch}.jpg',
         ),
-      });
+      };
+      if (accuracy != null) {
+        formMap['accuracy'] = accuracy.toString();
+      }
+      final formData = FormData.fromMap(formMap);
 
       final response = await _dio.post('/api/attendance/check-out', data: formData);
       return AttendanceRecord.fromJson(response.data['attendance']);
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Check-out failed');
+      throw Exception(e.response?.data?['error'] ?? formatDioError(e));
     }
   }
 

@@ -133,11 +133,15 @@ async function initDatabase() {
         check_in_time TIMESTAMP NOT NULL,
         check_in_lat REAL NOT NULL,
         check_in_lng REAL NOT NULL,
+        check_in_accuracy REAL,
+        check_in_is_mocked BOOLEAN DEFAULT FALSE,
         check_in_address TEXT,
         check_in_selfie VARCHAR(255),
         check_out_time TIMESTAMP,
         check_out_lat REAL,
         check_out_lng REAL,
+        check_out_accuracy REAL,
+        check_out_is_mocked BOOLEAN DEFAULT FALSE,
         check_out_address TEXT,
         check_out_selfie VARCHAR(255),
         status VARCHAR(50) DEFAULT 'checked_in',
@@ -150,11 +154,15 @@ async function initDatabase() {
         check_in_time DATETIME NOT NULL,
         check_in_lat REAL NOT NULL,
         check_in_lng REAL NOT NULL,
+        check_in_accuracy REAL,
+        check_in_is_mocked INTEGER DEFAULT 0,
         check_in_address TEXT,
         check_in_selfie TEXT,
         check_out_time DATETIME,
         check_out_lat REAL,
         check_out_lng REAL,
+        check_out_accuracy REAL,
+        check_out_is_mocked INTEGER DEFAULT 0,
         check_out_address TEXT,
         check_out_selfie TEXT,
         status TEXT DEFAULT 'checked_in',
@@ -173,6 +181,7 @@ async function initDatabase() {
         altitude REAL,
         battery_level REAL,
         is_gps_off BOOLEAN DEFAULT FALSE,
+        is_mocked BOOLEAN DEFAULT FALSE,
         timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
       )`
     : `CREATE TABLE IF NOT EXISTS location_tracks (
@@ -186,6 +195,7 @@ async function initDatabase() {
         altitude REAL,
         battery_level REAL,
         is_gps_off INTEGER DEFAULT 0,
+        is_mocked INTEGER DEFAULT 0,
         timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )`;
 
@@ -216,9 +226,24 @@ async function initDatabase() {
   await run(locationTracksTable);
   await run(gpsAlertsTable);
 
-  // Schema migration for existing installations
+  // Schema migrations for existing installations
   try {
     await run(`ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0`);
+  } catch (_) {}
+  try {
+    await run(`ALTER TABLE attendance ADD COLUMN check_in_accuracy REAL`);
+  } catch (_) {}
+  try {
+    await run(`ALTER TABLE attendance ADD COLUMN check_in_is_mocked INTEGER DEFAULT 0`);
+  } catch (_) {}
+  try {
+    await run(`ALTER TABLE attendance ADD COLUMN check_out_accuracy REAL`);
+  } catch (_) {}
+  try {
+    await run(`ALTER TABLE attendance ADD COLUMN check_out_is_mocked INTEGER DEFAULT 0`);
+  } catch (_) {}
+  try {
+    await run(`ALTER TABLE location_tracks ADD COLUMN is_mocked INTEGER DEFAULT 0`);
   } catch (_) {}
 
   // Seed Admin on first run with random password if no admin exists

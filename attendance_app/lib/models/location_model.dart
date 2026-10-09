@@ -28,9 +28,11 @@ class LiveEmployeeLocation {
     this.lastAccuracy,
     this.lastSpeed,
     this.isGpsOff = false,
+    this.isMocked = false,
     this.lastLocationTime,
   });
 
+  final bool isMocked;
   bool get isWorking => attendanceStatus == 'checked_in';
   bool get hasValidLocation => lastLatitude != null && lastLongitude != null;
 
@@ -49,6 +51,7 @@ class LiveEmployeeLocation {
       lastAccuracy: (json['last_accuracy'] as num?)?.toDouble(),
       lastSpeed: (json['last_speed'] as num?)?.toDouble(),
       isGpsOff: json['last_is_gps_off'] == 1 || json['last_is_gps_off'] == true,
+      isMocked: json['last_is_mocked'] == 1 || json['last_is_mocked'] == true,
       lastLocationTime: json['last_location_time'] != null
           ? DateTime.tryParse(json['last_location_time'].toString())
           : null,
@@ -63,6 +66,7 @@ class RoutePoint {
   final double? accuracy;
   final double? speed;
   final bool isGpsOff;
+  final bool isMocked;
   final DateTime timestamp;
 
   RoutePoint({
@@ -72,6 +76,7 @@ class RoutePoint {
     this.accuracy,
     this.speed,
     this.isGpsOff = false,
+    this.isMocked = false,
     required this.timestamp,
   });
 
@@ -83,6 +88,7 @@ class RoutePoint {
       accuracy: (json['accuracy'] as num?)?.toDouble(),
       speed: (json['speed'] as num?)?.toDouble(),
       isGpsOff: json['is_gps_off'] == 1 || json['is_gps_off'] == true,
+      isMocked: json['is_mocked'] == 1 || json['is_mocked'] == true,
       timestamp: DateTime.tryParse(json['timestamp']?.toString() ?? '') ?? DateTime.now(),
     );
   }

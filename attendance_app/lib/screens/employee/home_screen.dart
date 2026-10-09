@@ -32,12 +32,35 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _workTimer;
   String _workingDurationText = '00:00:00';
 
+  File? _lostSelfieFile;
+
   @override
   void initState() {
     super.initState();
     SyncService().init();
     _loadInitialData();
     _setupGpsMonitoring();
+    _checkLostImageData();
+  }
+
+  Future<void> _checkLostImageData() async {
+    try {
+      final LostDataResponse response = await _picker.retrieveLostData();
+      if (response.isEmpty) return;
+      if (response.file != null) {
+        _lostSelfieFile = File(response.file!.path);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              backgroundColor: AppColors.info,
+              content: Text('Restored previously captured selfie from camera.'),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('retrieveLostData error: $e');
+    }
   }
 
   void _setupGpsMonitoring() {
@@ -165,64 +188,89 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // 1. Verify and request GPS location
-    final position = await _locationService.getCurrentPosition();
-    if (position == null) {
+    // 1. Acquire GPS position with time limit, fresh last-known check, and specific errors
+    AttendanceGpsResult gpsResult;
+    try {
+      gpsResult = await _locationService.getAttendancePosition(isCheckOut: !isCheckIn);
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             backgroundColor: AppColors.error,
-            content: Text('Please enable GPS / Location permissions to continue.'),
+            content: Text(e.toString()),
           ),
         );
       }
       return;
     }
 
-    // 2. Open front-facing camera for Selfie capture with space-saving compression
-    try {
-      final XFile? photo = await _picker.pickImage(
-        source: ImageSource.camera,
-        preferredCameraDevice: CameraDevice.front,
-        maxWidth: 600, // Compact resolution saves 95%+ space
-        maxHeight: 600,
-        imageQuality: 65, // Highly optimized JPEG quality
-      );
+    // 2. Open front-facing camera for Selfie capture with retry loop ("Retake" reopens camera)
+    File? confirmedSelfieFile;
+    File? candidateFile = _lostSelfieFile;
+    _lostSelfieFile = null;
 
-      if (photo == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              backgroundColor: AppColors.warning,
-              content: Text('Selfie capture was cancelled. Attendance not recorded.'),
-            ),
+    try {
+      while (confirmedSelfieFile == null) {
+        if (candidateFile == null) {
+          final XFile? photo = await _picker.pickImage(
+            source: ImageSource.camera,
+            preferredCameraDevice: CameraDevice.front,
+            maxWidth: 1280, // Client sends max 1280px at quality 85 (no double heavy compression)
+            maxHeight: 1280,
+            imageQuality: 85,
           );
+
+          if (photo == null) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  backgroundColor: AppColors.warning,
+                  content: Text('Selfie capture was cancelled. Attendance not recorded.'),
+                ),
+              );
+            }
+            return;
+          }
+          candidateFile = File(photo.path);
         }
-        return;
+
+        final sizeKb = (candidateFile.lengthSync() / 1024).toStringAsFixed(1);
+
+        // 3. Confirm selfie with coordinate & compressed size preview dialog
+        if (!mounted) return;
+        final dialogChoice = await _showSelfieConfirmationDialog(
+          selfie: candidateFile,
+          lat: gpsResult.position.latitude,
+          lng: gpsResult.position.longitude,
+          accuracy: gpsResult.position.accuracy,
+          isCheckIn: isCheckIn,
+          sizeKb: sizeKb,
+          isLowAccuracy: gpsResult.isLowAccuracy,
+          isMocked: gpsResult.isMocked,
+        );
+
+        if (dialogChoice == 'confirm') {
+          confirmedSelfieFile = candidateFile;
+        } else if (dialogChoice == 'retake') {
+          // Re-trigger camera capture immediately
+          candidateFile = null;
+          continue;
+        } else {
+          // User dismissed or cancelled
+          return;
+        }
       }
 
-      final selfieFile = File(photo.path);
-      final sizeKb = (selfieFile.lengthSync() / 1024).toStringAsFixed(1);
-
-      // 3. Confirm selfie with coordinate & compressed size preview dialog
-      if (!mounted) return;
-      final confirmed = await _showSelfieConfirmationDialog(
-        selfieFile,
-        position.latitude,
-        position.longitude,
-        isCheckIn,
-        sizeKb,
-      );
-      if (!confirmed) return;
-
-      // 4. Submit to API
+      // 4. Submit to API with is_mocked and accuracy
       setState(() => _isActionLoading = true);
 
       if (isCheckIn) {
         final newRecord = await ApiService().checkIn(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          selfieFile: selfieFile,
+          latitude: gpsResult.position.latitude,
+          longitude: gpsResult.position.longitude,
+          accuracy: gpsResult.position.accuracy,
+          isMocked: gpsResult.isMocked,
+          selfieFile: confirmedSelfieFile,
         );
 
         setState(() {
@@ -236,17 +284,23 @@ class _HomeScreenState extends State<HomeScreen> {
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              backgroundColor: AppColors.success,
-              content: Text('✅ Checked In successfully! GPS Tracking Active.'),
+            SnackBar(
+              backgroundColor: gpsResult.isMocked ? AppColors.warning : AppColors.success,
+              content: Text(
+                gpsResult.isMocked
+                    ? '⚠️ Checked in (Flagged: Mock Location detected). Continuous tracking active.'
+                    : '✅ Checked In successfully! GPS Tracking Active.',
+              ),
             ),
           );
         }
       } else {
         await ApiService().checkOut(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          selfieFile: selfieFile,
+          latitude: gpsResult.position.latitude,
+          longitude: gpsResult.position.longitude,
+          accuracy: gpsResult.position.accuracy,
+          isMocked: gpsResult.isMocked,
+          selfieFile: confirmedSelfieFile,
         );
 
         setState(() {
@@ -281,94 +335,128 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<bool> _showSelfieConfirmationDialog(
-    File selfie,
-    double lat,
-    double lng,
-    bool isCheckIn,
-    String sizeKb,
-  ) async {
-    return await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: AppColors.cardDark,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: Text(
-              isCheckIn ? 'Confirm Check-In Selfie' : 'Confirm Check-Out Selfie',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: Image.file(
-                    selfie,
-                    width: 200,
-                    height: 200,
-                    fit: BoxFit.cover,
-                  ),
+  Future<String?> _showSelfieConfirmationDialog({
+    required File selfie,
+    required double lat,
+    required double lng,
+    required double accuracy,
+    required bool isCheckIn,
+    required String sizeKb,
+    required bool isLowAccuracy,
+    required bool isMocked,
+  }) async {
+    return await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          isCheckIn ? 'Confirm Check-In Selfie' : 'Confirm Check-Out Selfie',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.file(
+                  selfie,
+                  width: 200,
+                  height: 200,
+                  fit: BoxFit.cover,
                 ),
-                const SizedBox(height: 14),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.inputDark,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.location_on, color: AppColors.success, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'GPS: ${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}',
-                              style: const TextStyle(color: Colors.white70, fontSize: 12),
-                            ),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.inputDark,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on, color: AppColors.success, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'GPS: ${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)} (±${accuracy.toStringAsFixed(0)}m)',
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
+                        ),
+                      ],
+                    ),
+                    if (isLowAccuracy) ...[
+                      const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(Icons.cloud_done_outlined, color: AppColors.info, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
+                          const Icon(Icons.info_outline, color: AppColors.warning, size: 16),
+                          const SizedBox(width: 6),
+                          const Expanded(
                             child: Text(
-                              'Selfie Size: $sizeKb KB (Optimized for GCP)',
-                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                              'Low accuracy fix (flagged on server)',
+                              style: TextStyle(color: AppColors.warning, fontSize: 11),
                             ),
                           ),
                         ],
                       ),
                     ],
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Retake', style: TextStyle(color: AppColors.textMuted)),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isCheckIn ? AppColors.success : AppColors.error,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(
-                  isCheckIn ? 'Submit Check-In' : 'Submit Check-Out',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    if (isMocked) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.warning, color: AppColors.error, size: 16),
+                          const SizedBox(width: 6),
+                          const Expanded(
+                            child: Text(
+                              'Mock / Fake GPS detected (flagged for admin)',
+                              style: TextStyle(color: AppColors.error, fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.photo_camera_outlined, color: AppColors.info, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Client Photo: $sizeKb KB (Compressed on GCP)',
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-        ) ??
-        false;
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'retake'),
+            child: const Text('Retake', style: TextStyle(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isCheckIn ? AppColors.success : AppColors.error,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx, 'confirm'),
+            child: Text(
+              isCheckIn ? 'Submit Check-In' : 'Submit Check-Out',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
