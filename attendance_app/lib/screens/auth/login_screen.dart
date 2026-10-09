@@ -15,9 +15,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
-  bool _isTestingConnection = false;
   String? _errorMessage;
-  String? _connectionStatus;
 
   @override
   void dispose() {
@@ -60,20 +58,6 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
-  }
-
-  Future<void> _testServerConnection() async {
-    setState(() {
-      _isTestingConnection = true;
-    });
-
-    final res = await ApiService().testConnection();
-
-    if (!mounted) return;
-    setState(() {
-      _isTestingConnection = false;
-      _connectionStatus = res['message'];
-    });
   }
 
   @override
@@ -270,70 +254,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Current Server Info & Test Connection Button
-                  InkWell(
-                    onTap: _isTestingConnection ? null : _testServerConnection,
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceDark.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _connectionStatus != null
-                              ? (_connectionStatus!.startsWith('Connected')
-                                  ? AppColors.success
-                                  : AppColors.error)
-                              : Colors.white12,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _connectionStatus != null
-                                ? (_connectionStatus!.startsWith('Connected')
-                                    ? Icons.check_circle_outline
-                                    : Icons.error_outline)
-                                : Icons.cloud_outlined,
-                            size: 15,
-                            color: _connectionStatus != null
-                                ? (_connectionStatus!.startsWith('Connected')
-                                    ? AppColors.success
-                                    : AppColors.error)
-                                : AppColors.textMuted,
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              _isTestingConnection
-                                  ? 'Testing connection...'
-                                  : (_connectionStatus ?? 'Server Connection'),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.white.withValues(alpha: 0.8),
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if (!_isTestingConnection)
-                            const Text(
-                              '• Test',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.info,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                        ],
-                      ),
                     ),
                   ),
                 ],
