@@ -108,7 +108,7 @@ For Admin alerts (e.g. employee turned off GPS / entered unauthorized state / si
 1. Go to [Firebase Console](https://console.firebase.google.com/).
 2. Create project: **Sologix Energy Attendance**.
 3. Add an Android App:
-   - Package name: `com.company.attendance.attendance_app`
+   - Package name: `com.sologixenergy.attendance`
 4. Download `google-services.json` and place it in:
    `attendance_app/android/app/google-services.json`
 5. In Firebase Project Settings > Service Accounts:
@@ -126,13 +126,13 @@ To generate a private release keystore for building production `.aab` or signed 
    ```bash
    keytool -genkey -v -keystore sologix-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias sologix_key
    ```
-2. Move `sologix-release-key.jks` into `attendance_app/android/app/`.
+2. Move `sologix-release-key.jks` into `attendance_app/android/app/sologix-release-key.jks`.
 3. Create `attendance_app/android/key.properties` with:
    ```properties
    storePassword=YOUR_STORE_PASSWORD
    keyPassword=YOUR_KEY_PASSWORD
    keyAlias=sologix_key
-   storeFile=sologix-release-key.jks
+   storeFile=app/sologix-release-key.jks
    ```
    *(Note: `key.properties` and `.jks` are ignored by git in `.gitignore` for security).*
 

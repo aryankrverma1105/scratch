@@ -176,7 +176,7 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.company.attendance.attendance_app',
+                userAgentPackageName: 'com.sologixenergy.attendance',
               ),
               MarkerLayer(markers: markers),
             ],

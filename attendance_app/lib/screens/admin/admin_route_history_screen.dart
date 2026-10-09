@@ -307,7 +307,7 @@ class _AdminRouteHistoryScreenState extends State<AdminRouteHistoryScreen> {
                   children: [
                     TileLayer(
                       urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.company.attendance.attendance_app',
+                      userAgentPackageName: 'com.sologixenergy.attendance',
                     ),
                     PolylineLayer(
                       polylines: [

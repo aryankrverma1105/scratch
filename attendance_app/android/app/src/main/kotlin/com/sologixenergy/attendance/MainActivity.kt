@@ -1,4 +1,4 @@
-package com.company.attendance.attendance_app
+package com.sologixenergy.attendance
 
 import io.flutter.embedding.android.FlutterActivity
 
