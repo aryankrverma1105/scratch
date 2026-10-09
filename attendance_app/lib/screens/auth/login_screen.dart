@@ -309,13 +309,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                 : AppColors.textMuted,
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            _isTestingConnection
-                                ? 'Testing connection...'
-                                : (_connectionStatus ?? 'Server: ${ApiService().baseUrl}'),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.white.withValues(alpha: 0.8),
+                          Flexible(
+                            child: Text(
+                              _isTestingConnection
+                                  ? 'Testing connection...'
+                                  : (_connectionStatus ?? 'Server: ${ApiService().baseUrl}'),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white.withValues(alpha: 0.8),
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -330,17 +334,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                         ],
                       ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 25),
-                  Text(
-                    'Designed and developed by aryan kumar verma',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.45),
-                      fontStyle: FontStyle.italic,
-                      letterSpacing: 0.5,
                     ),
                   ),
                 ],

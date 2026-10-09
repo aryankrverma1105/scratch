@@ -128,16 +128,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                           letterSpacing: 0.8,
                         ),
                       ),
-                      const SizedBox(height: 35),
-                      Text(
-                        'Designed and developed by aryan kumar verma',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withValues(alpha: 0.45),
-                          fontStyle: FontStyle.italic,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
                     ],
                   ),
                 ),

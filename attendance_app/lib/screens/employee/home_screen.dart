@@ -1032,18 +1032,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
 
-                        const SizedBox(height: 30),
-                        Center(
-                          child: Text(
-                            'Designed and developed by aryan kumar verma',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.white.withValues(alpha: 0.4),
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 15),
                       ],
                     ),
                   ),
