@@ -8,6 +8,7 @@ import '../../core/services/api_service.dart';
 import '../../models/location_model.dart';
 import 'admin_route_history_screen.dart';
 import 'admin_attendance_screen.dart';
+import 'admin_employee_attendance_screen.dart';
 
 class AdminLiveMapScreen extends StatefulWidget {
   const AdminLiveMapScreen({super.key});
@@ -351,28 +352,55 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 44,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.route, color: Colors.white, size: 18),
-                        label: const Text('View Historical Route & Path', style: TextStyle(color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.info,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => AdminRouteHistoryScreen(
-                                initialUserId: _selectedEmployee!.userId,
-                                initialUserName: _selectedEmployee!.fullName,
-                              ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.route, color: Colors.white, size: 16),
+                            label: const Text('Route Trail', style: TextStyle(color: Colors.white, fontSize: 12.5)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.info,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
-                          );
-                        },
-                      ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AdminRouteHistoryScreen(
+                                    initialUserId: _selectedEmployee!.userId,
+                                    initialUserName: _selectedEmployee!.fullName,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.photo_library_outlined, color: AppColors.success, size: 16),
+                            label: const Text('All Selfies', style: TextStyle(color: Colors.white, fontSize: 12.5)),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.white24),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AdminEmployeeAttendanceScreen(
+                                    employeeId: _selectedEmployee!.userId,
+                                    employeeName: _selectedEmployee!.fullName,
+                                    employeeDepartment: _selectedEmployee!.department,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

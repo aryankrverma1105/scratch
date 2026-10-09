@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
 import '../../models/attendance_model.dart';
+import 'admin_employee_attendance_screen.dart';
 
 class AdminAttendanceScreen extends StatefulWidget {
   const AdminAttendanceScreen({super.key});
@@ -184,6 +185,18 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.person_search, color: AppColors.info),
+            tooltip: 'View by Employee & Selfies',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AdminEmployeeAttendanceScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white70),
             onPressed: _loadAttendance,
           ),
@@ -217,6 +230,53 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
             ),
           ),
 
+          // Shortcut to Individual Employee Attendance & Selfies
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            decoration: BoxDecoration(
+              color: AppColors.cardDark,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AdminEmployeeAttendanceScreen(),
+                  ),
+                );
+              },
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.photo_library_outlined, color: AppColors.info, size: 22),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Individual Employee Attendance & Selfies',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'View full past attendance history and photo records for any staff member',
+                            style: TextStyle(color: AppColors.textDim, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.arrow_forward_ios, color: AppColors.info, size: 14),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
           // Attendance Records List
           Expanded(
             child: _isLoading
@@ -244,7 +304,21 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                           final isCheckedIn = rec.status == 'checked_in';
                           final isAuto = rec.status == 'auto_checked_out';
 
-                          return Container(
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(18),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AdminEmployeeAttendanceScreen(
+                                    employeeId: rec.userId,
+                                    employeeName: rec.employeeName,
+                                    employeeDepartment: rec.employeeDepartment,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               color: AppColors.cardDark,
@@ -382,10 +456,24 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                     ),
                                   ],
                                 ),
+                                const SizedBox(height: 12),
+                                const Divider(color: Colors.white10, height: 1),
+                                const SizedBox(height: 8),
+                                const Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'View Complete History & Selfies',
+                                      style: TextStyle(color: AppColors.info, fontSize: 11.5, fontWeight: FontWeight.bold),
+                                    ),
+                                    Icon(Icons.arrow_forward, size: 14, color: AppColors.info),
+                                  ],
+                                ),
                               ],
                             ),
-                          );
-                        },
+                          ),
+                        );
+                      },
                       ),
           ),
         ],

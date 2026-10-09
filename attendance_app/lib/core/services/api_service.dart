@@ -536,9 +536,9 @@ class ApiService {
     }
   }
 
-  Future<List<AttendanceRecord>> adminGetAttendance({String? date, int? userId}) async {
+  Future<List<AttendanceRecord>> adminGetAttendance({String? date, int? userId, int limit = 200}) async {
     try {
-      final query = <String, dynamic>{};
+      final query = <String, dynamic>{'limit': limit};
       if (date != null) query['date'] = date;
       if (userId != null) query['userId'] = userId;
 

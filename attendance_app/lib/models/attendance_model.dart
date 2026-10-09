@@ -19,6 +19,7 @@ class AttendanceRecord {
   final String status; // 'checked_in' | 'checked_out'
   final String? employeeName;
   final String? employeeDepartment;
+  final String? checkOutType;
 
   AttendanceRecord({
     required this.id,
@@ -41,6 +42,7 @@ class AttendanceRecord {
     required this.status,
     this.employeeName,
     this.employeeDepartment,
+    this.checkOutType,
   });
 
   bool get isCurrentlyCheckedIn => status == 'checked_in';
@@ -76,6 +78,7 @@ class AttendanceRecord {
       status: json['status'] ?? 'checked_in',
       employeeName: json['full_name'],
       employeeDepartment: json['department'],
+      checkOutType: json['check_out_type'],
     );
   }
 }

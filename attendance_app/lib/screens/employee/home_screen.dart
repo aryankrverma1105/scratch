@@ -14,6 +14,7 @@ import 'permissions_screen.dart';
 import '../../models/attendance_model.dart';
 import '../../models/user_model.dart';
 import 'profile_screen.dart';
+import '../admin/admin_employee_attendance_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -892,6 +893,67 @@ class _HomeScreenState extends State<HomeScreen> {
                             ],
                           ),
                         ),
+
+                        if (ApiService().currentUser?.isAdmin ?? false) ...[
+                          const SizedBox(height: 25),
+                          const Text(
+                            'Admin Management Console',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.cardDark,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: AppColors.info.withValues(alpha: 0.35)),
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const AdminEmployeeAttendanceScreen(),
+                                  ),
+                                );
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: Color(0x332196F3),
+                                      child: Icon(Icons.photo_library_outlined, color: AppColors.info, size: 24),
+                                    ),
+                                    SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Employee Attendance & Selfies Archive',
+                                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
+                                          SizedBox(height: 3),
+                                          Text(
+                                            'View past attendance records, check-in/out selfies & verification details for any employee',
+                                            style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_forward_ios, color: AppColors.info, size: 14),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
 
                         const SizedBox(height: 25),
 

@@ -10,11 +10,13 @@ import '../../models/user_model.dart';
 class AdminRouteHistoryScreen extends StatefulWidget {
   final int? initialUserId;
   final String? initialUserName;
+  final DateTime? initialDate;
 
   const AdminRouteHistoryScreen({
     super.key,
     this.initialUserId,
     this.initialUserName,
+    this.initialDate,
   });
 
   @override
@@ -25,7 +27,7 @@ class _AdminRouteHistoryScreenState extends State<AdminRouteHistoryScreen> {
   final MapController _mapController = MapController();
   List<UserModel> _allUsers = [];
   int? _selectedUserId;
-  DateTime _selectedDate = DateTime.now();
+  late DateTime _selectedDate;
   List<RoutePoint> _routePoints = [];
   bool _isLoading = false;
   int _sliderIndex = 0;
@@ -34,6 +36,7 @@ class _AdminRouteHistoryScreenState extends State<AdminRouteHistoryScreen> {
   void initState() {
     super.initState();
     _selectedUserId = widget.initialUserId;
+    _selectedDate = widget.initialDate ?? DateTime.now();
     _loadUsersAndRoute();
   }
 

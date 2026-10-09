@@ -3,6 +3,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
 import '../../models/user_model.dart';
 import 'admin_route_history_screen.dart';
+import 'admin_employee_attendance_screen.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -616,143 +617,171 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                             final user = filteredUsers[index];
                             final isAdmin = user.isAdmin;
 
-                            return Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: AppColors.cardDark,
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                      color: isAdmin ? AppColors.info.withOpacity(0.2) : AppColors.success.withOpacity(0.2),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      isAdmin ? Icons.admin_panel_settings : Icons.badge,
-                                      color: isAdmin ? AppColors.info : AppColors.success,
-                                    ),
+                            return InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => AdminEmployeeAttendanceScreen(employee: user),
                                   ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          user.fullName,
-                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          user.email,
-                                          style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          user.department ?? 'General Department',
-                                          style: const TextStyle(color: Colors.white60, fontSize: 11),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: user.isActive ? AppColors.inputDark : Colors.red.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Text(
-                                      user.isActive ? user.role.toUpperCase() : 'DEACTIVATED',
-                                      style: TextStyle(
-                                        color: !user.isActive
-                                            ? AppColors.error
-                                            : isAdmin
-                                                ? AppColors.info
-                                                : AppColors.success,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardDark,
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 48,
+                                      height: 48,
+                                      decoration: BoxDecoration(
+                                        color: isAdmin ? AppColors.info.withOpacity(0.2) : AppColors.success.withOpacity(0.2),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        isAdmin ? Icons.admin_panel_settings : Icons.badge,
+                                        color: isAdmin ? AppColors.info : AppColors.success,
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert, color: Colors.white70, size: 20),
-                                    color: AppColors.cardDark,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                    onSelected: (val) {
-                                      if (val == 'edit') {
-                                        _showEditUserModal(user);
-                                      } else if (val == 'toggle_status') {
-                                        _toggleUserActive(user);
-                                      } else if (val == 'reset_pw') {
-                                        _showResetPasswordModal(user);
-                                      } else if (val == 'route') {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => AdminRouteHistoryScreen(
-                                              initialUserId: user.id,
-                                              initialUserName: user.fullName,
-                                            ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            user.fullName,
+                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
                                           ),
-                                        );
-                                      }
-                                    },
-                                    itemBuilder: (context) => [
-                                      const PopupMenuItem(
-                                        value: 'edit',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.edit, color: AppColors.info, size: 18),
-                                            SizedBox(width: 10),
-                                            Text('Edit Details', style: TextStyle(color: Colors.white)),
-                                          ],
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            user.email,
+                                            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            user.department ?? 'General Department',
+                                            style: const TextStyle(color: Colors.white60, fontSize: 11),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: user.isActive ? AppColors.inputDark : Colors.red.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        user.isActive ? user.role.toUpperCase() : 'DEACTIVATED',
+                                        style: TextStyle(
+                                          color: !user.isActive
+                                              ? AppColors.error
+                                              : isAdmin
+                                                  ? AppColors.info
+                                                  : AppColors.success,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                      PopupMenuItem(
-                                        value: 'toggle_status',
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              user.isActive ? Icons.block : Icons.check_circle,
-                                              color: user.isActive ? AppColors.error : AppColors.success,
-                                              size: 18,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    PopupMenuButton<String>(
+                                      icon: const Icon(Icons.more_vert, color: Colors.white70, size: 20),
+                                      color: AppColors.cardDark,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                      onSelected: (val) {
+                                        if (val == 'attendance') {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => AdminEmployeeAttendanceScreen(employee: user),
                                             ),
-                                            SizedBox(width: 10),
-                                            Text(
-                                              user.isActive ? 'Deactivate User' : 'Activate User',
-                                              style: TextStyle(color: user.isActive ? AppColors.error : AppColors.success),
+                                          );
+                                        } else if (val == 'edit') {
+                                          _showEditUserModal(user);
+                                        } else if (val == 'toggle_status') {
+                                          _toggleUserActive(user);
+                                        } else if (val == 'reset_pw') {
+                                          _showResetPasswordModal(user);
+                                        } else if (val == 'route') {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => AdminRouteHistoryScreen(
+                                                initialUserId: user.id,
+                                                initialUserName: user.fullName,
+                                              ),
                                             ),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'reset_pw',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.lock_reset, color: Colors.amber, size: 18),
-                                            SizedBox(width: 10),
-                                            Text('Reset Password', style: TextStyle(color: Colors.white)),
-                                          ],
-                                        ),
-                                      ),
-                                      if (!user.isAdmin)
+                                          );
+                                        }
+                                      },
+                                      itemBuilder: (context) => [
                                         const PopupMenuItem(
-                                          value: 'route',
+                                          value: 'attendance',
                                           child: Row(
                                             children: [
-                                              Icon(Icons.route, color: AppColors.success, size: 18),
+                                              Icon(Icons.assignment_ind, color: AppColors.info, size: 18),
                                               SizedBox(width: 10),
-                                              Text('View Route Trail', style: TextStyle(color: Colors.white)),
+                                              Text('Attendance & Selfies', style: TextStyle(color: Colors.white)),
                                             ],
                                           ),
                                         ),
-                                    ],
-                                  ),
-                                ],
+                                        const PopupMenuItem(
+                                          value: 'edit',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.edit, color: AppColors.info, size: 18),
+                                              SizedBox(width: 10),
+                                              Text('Edit Details', style: TextStyle(color: Colors.white)),
+                                            ],
+                                          ),
+                                        ),
+                                        PopupMenuItem(
+                                          value: 'toggle_status',
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                user.isActive ? Icons.block : Icons.check_circle,
+                                                color: user.isActive ? AppColors.error : AppColors.success,
+                                                size: 18,
+                                              ),
+                                              SizedBox(width: 10),
+                                              Text(
+                                                user.isActive ? 'Deactivate User' : 'Activate User',
+                                                style: TextStyle(color: user.isActive ? AppColors.error : AppColors.success),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const PopupMenuItem(
+                                          value: 'reset_pw',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.lock_reset, color: Colors.amber, size: 18),
+                                              SizedBox(width: 10),
+                                              Text('Reset Password', style: TextStyle(color: Colors.white)),
+                                            ],
+                                          ),
+                                        ),
+                                        if (!user.isAdmin)
+                                          const PopupMenuItem(
+                                            value: 'route',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.route, color: AppColors.success, size: 18),
+                                                SizedBox(width: 10),
+                                                Text('View Route Trail', style: TextStyle(color: Colors.white)),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             );
                           },
