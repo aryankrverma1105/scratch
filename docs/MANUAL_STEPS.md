@@ -70,6 +70,17 @@ sudo certbot renew --dry-run
 ```
 Certbot will configure HTTPS redirects (HTTP 80 -> HTTPS 443) and manage TLS certificates automatically.
 
+### B. Point Flutter Mobile App to Production HTTPS Domain
+Once SSL is activated, build the mobile app pointing to your HTTPS domain using `--dart-define`:
+```bash
+cd attendance_app
+flutter build apk --release --dart-define=API_BASE_URL=https://api.sologixenergy.com
+```
+Or for debug testing:
+```bash
+flutter run --dart-define=API_BASE_URL=https://api.sologixenergy.com
+```
+
 ---
 
 ## 4. Production Database: PostgreSQL & Daily GCS Backups

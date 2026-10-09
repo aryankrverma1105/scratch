@@ -1,17 +1,51 @@
 services:
-  attendance-backend:
-    build: .
-    container_name: attendance-api
+  postgres:
+    image: postgres:16-alpine
+    container_name: sologix-postgres
     restart: always
-    ports:
-      - "5000:5000"
     environment:
-      - PORT=5000
-      - JWT_SECRET=super_secret_attendance_jwt_key_2026_change_in_production
-      - JWT_EXPIRES_IN=30d
-      - ADMIN_DEFAULT_EMAIL=admin@company.com
-      - ADMIN_DEFAULT_PASSWORD=admin123
+      POSTGRES_DB: sologix_attendance
+      POSTGRES_USER: attendance_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sologix_secure_db_pass_2026}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  backend:
+    build: .
+    container_name: sologix-attendance-backend
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      - NODE_ENV=production
+      - PORT=5050
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgres://attendance_user:${DB_PASSWORD:-sologix_secure_db_pass_2026}@postgres:5432/sologix_attendance
+      - JWT_SECRET=${JWT_SECRET:-super_secret_attendance_jwt_key_2026_change_in_production}
+      - JWT_EXPIRES_IN=12h
+      - COMPANY_TZ=Asia/Kolkata
+      - AUTO_CHECKOUT_TIME=21:00
+      - ADMIN_DEFAULT_EMAIL=admin@sologixenergy.com
       - ADMIN_DEFAULT_NAME=System Administrator
+    ports:
+      # Bind to localhost only so external access must pass through Nginx on 80/443
+      - "127.0.0.1:5050:5050"
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  postgres_data:

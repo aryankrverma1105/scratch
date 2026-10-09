@@ -78,11 +78,12 @@ async function start() {
     startWatchdog();
     initAutoCheckoutCron();
 
-    const server = app.listen(config.PORT, '0.0.0.0', () => {
+    const bindHost = process.env.HOST || '127.0.0.1';
+    const server = app.listen(config.PORT, bindHost, () => {
       console.log(`=======================================================`);
-      console.log(`🚀 Sologix Energy Backend API running on port ${config.PORT}`);
+      console.log(`🚀 Sologix Energy Backend API running on port ${config.PORT} (${bindHost})`);
       console.log(`   Designed and developed by Aryan Kumar Verma`);
-      console.log(`   Health check: http://localhost:${config.PORT}/api/health`);
+      console.log(`   Health check: http://${bindHost}:${config.PORT}/api/health`);
       console.log(`=======================================================`);
     });
     return server;
