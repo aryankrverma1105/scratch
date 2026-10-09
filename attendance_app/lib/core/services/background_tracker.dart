@@ -5,6 +5,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'api_service.dart';
 
 class BackgroundTrackerService {
@@ -13,6 +14,19 @@ class BackgroundTrackerService {
   BackgroundTrackerService._internal();
 
   static Future<void> initializeService() async {
+    final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'attendance_tracking_channel',
+      'Sologix Attendance Tracking',
+      description: 'Continuous duty GPS tracking in progress for Sologix Energy',
+      importance: Importance.low,
+    );
+
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+
     final service = FlutterBackgroundService();
 
     await service.configure(
@@ -21,7 +35,7 @@ class BackgroundTrackerService {
         autoStart: false,
         isForegroundMode: true,
         notificationChannelId: 'attendance_tracking_channel',
-        initialNotificationTitle: 'WorkFlow Pro Active',
+        initialNotificationTitle: 'Sologix Energy Tracking Active',
         initialNotificationContent: 'Continuous duty GPS tracking in progress...',
         foregroundServiceNotificationId: 888,
         foregroundServiceTypes: [AndroidForegroundType.location],
@@ -76,6 +90,13 @@ void onStart(ServiceInstance service) async {
         return;
       }
 
+      // Check if location permission is revoked mid-shift
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        _sendGpsAlert(baseUrl, token, 'LOCATION_PERMISSION_REVOKED');
+        return;
+      }
+
       bool isEnabled = await Geolocator.isLocationServiceEnabled();
       if (!isEnabled) {
         // Notify backend GPS is disabled
@@ -123,9 +144,13 @@ Future<void> _sendGpsAlert(String baseUrl, String token, String status) async {
       },
     ));
 
+    final message = status == 'LOCATION_PERMISSION_REVOKED'
+        ? 'Location permission revoked during active duty shift'
+        : 'Employee turned off GPS while app is minimized/running in background';
+
     await dio.post('/api/location/gps-status', data: {
       'status': status,
-      'message': 'Employee turned off GPS while app is minimized/running in background',
+      'message': message,
     });
   } catch (_) {}
 }

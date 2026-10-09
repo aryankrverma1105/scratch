@@ -3,6 +3,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
 import '../../models/user_model.dart';
 import '../auth/login_screen.dart';
+import 'permissions_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -83,7 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Sign Out', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         content: const Text(
-          'Are you sure you want to sign out of WorkFlow Pro?',
+          'Are you sure you want to sign out of Sologix Energy?',
           style: TextStyle(color: AppColors.textDim),
         ),
         actions: [
@@ -248,10 +249,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Column(
                           children: [
                             ListTile(
-                              leading: const Icon(Icons.settings, color: Colors.white70),
+                              leading: const Icon(Icons.settings_outlined, color: Colors.white70),
                               title: const Text('Server Configuration (GCP)', style: TextStyle(color: Colors.white)),
                               trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
                               onTap: _showServerSettings,
+                            ),
+                            const Divider(color: Colors.white12, height: 1),
+                            ListTile(
+                              leading: const Icon(Icons.shield_outlined, color: AppColors.info),
+                              title: const Text('Tracking Permissions & Battery Setup', style: TextStyle(color: Colors.white)),
+                              subtitle: const Text('Notifications, Background GPS & OEM auto-start', style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+                              trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const PermissionsScreen()),
+                                );
+                              },
                             ),
                             const Divider(color: Colors.white12, height: 1),
                             ListTile(

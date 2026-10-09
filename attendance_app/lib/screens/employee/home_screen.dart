@@ -8,6 +8,8 @@ import '../../core/services/api_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/background_tracker.dart';
 import '../../core/services/sync_service.dart';
+import '../../core/services/permission_service.dart';
+import 'permissions_screen.dart';
 import '../../models/attendance_model.dart';
 import '../../models/user_model.dart';
 import 'profile_screen.dart';
@@ -139,6 +141,30 @@ class _HomeScreenState extends State<HomeScreen> {
   // --- Selfie Capture & Attendance Action ---
 
   Future<void> _handleAttendanceAction(bool isCheckIn) async {
+    // 0. Verify required tracking permissions
+    final permStatus = await PermissionService.checkAllPermissions();
+    if (!permStatus.isReadyForCheckIn) {
+      if (!mounted) return;
+      final granted = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(builder: (_) => const PermissionsScreen()),
+      );
+      if (granted != true) {
+        final recheck = await PermissionService.checkAllPermissions();
+        if (!recheck.isReadyForCheckIn) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                backgroundColor: AppColors.error,
+                content: Text('Location permissions and GPS are required for duty attendance.'),
+              ),
+            );
+          }
+          return;
+        }
+      }
+    }
+
     // 1. Verify and request GPS location
     final position = await _locationService.getCurrentPosition();
     if (position == null) {
