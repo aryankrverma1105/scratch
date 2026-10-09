@@ -301,8 +301,8 @@ class _AdminRouteHistoryScreenState extends State<AdminRouteHistoryScreen> {
                 FlutterMap(
                   mapController: _mapController,
                   options: MapOptions(
-                    initialCenter: const LatLng(28.6139, 77.2090),
-                    initialZoom: 13.0,
+                    initialCenter: const LatLng(23.3441, 85.3832), // STPI RIADA, Namkum, Ranchi
+                    initialZoom: 13.5,
                   ),
                   children: [
                     TileLayer(

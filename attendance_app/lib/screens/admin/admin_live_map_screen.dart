@@ -169,8 +169,8 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: const LatLng(28.6139, 77.2090), // Default center
-              initialZoom: 12.0,
+              initialCenter: const LatLng(23.3441, 85.3832), // STPI RIADA, Namkum, Ranchi
+              initialZoom: 13.5,
               interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
             ),
             children: [

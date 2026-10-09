@@ -313,7 +313,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: Text(
                               _isTestingConnection
                                   ? 'Testing connection...'
-                                  : (_connectionStatus ?? 'Server: ${ApiService().baseUrl}'),
+                                  : (_connectionStatus ?? 'Server Connection'),
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.white.withValues(alpha: 0.8),

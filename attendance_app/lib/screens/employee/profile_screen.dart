@@ -23,60 +23,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _user = ApiService().currentUser;
   }
 
-  void _showServerSettings() {
-    final serverController = TextEditingController(text: ApiService().baseUrl);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.cardDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('GCP Server Endpoint', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Configured REST API Base URL:',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: serverController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: AppColors.inputDark,
-                hintText: 'https://vm-ip:5000',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.info,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () async {
-              await ApiService().setBaseUrl(serverController.text);
-              if (mounted) {
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(backgroundColor: AppColors.success, content: Text('Saved: ${serverController.text}')),
-                );
-              }
-            },
-            child: const Text('Save', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
 
   Future<void> _showLogoutDialog() async {
     bool isCheckedIn = false;
@@ -253,8 +199,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             _buildInfoRow(Icons.business, 'Department', user?.department ?? 'General'),
                             const Divider(color: Colors.white12, height: 24),
                             _buildInfoRow(Icons.phone_outlined, 'Phone', user?.phone ?? 'Not provided'),
-                            const Divider(color: Colors.white12, height: 24),
-                            _buildInfoRow(Icons.dns_outlined, 'Backend Server', ApiService().baseUrl),
                           ],
                         ),
                       ),
@@ -269,13 +213,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         child: Column(
                           children: [
-                            ListTile(
-                              leading: const Icon(Icons.settings_outlined, color: Colors.white70),
-                              title: const Text('Server Configuration (GCP)', style: TextStyle(color: Colors.white)),
-                              trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
-                              onTap: _showServerSettings,
-                            ),
-                            const Divider(color: Colors.white12, height: 1),
                             ListTile(
                               leading: const Icon(Icons.shield_outlined, color: AppColors.info),
                               title: const Text('Tracking Permissions & Battery Setup', style: TextStyle(color: Colors.white)),
