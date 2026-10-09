@@ -5,6 +5,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
+import 'api_service.dart';
 
 class BackgroundTrackerService {
   static final BackgroundTrackerService _instance = BackgroundTrackerService._internal();
@@ -68,7 +69,7 @@ void onStart(ServiceInstance service) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
-      final baseUrl = prefs.getString('server_base_url') ?? 'http://34.180.17.0:5050';
+      final baseUrl = prefs.getString('server_base_url') ?? ApiService.defaultBaseUrl;
 
       if (token == null) {
         // Not logged in or checked out

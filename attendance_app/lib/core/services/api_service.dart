@@ -11,8 +11,13 @@ class ApiService {
   factory ApiService() => _instance;
   ApiService._internal();
 
+  static const String defaultBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://34.180.17.0:5050',
+  );
+
   late Dio _dio;
-  String _baseUrl = 'http://34.180.17.0:5050'; // Pre-configured to user GCP VM port 5050
+  String _baseUrl = defaultBaseUrl;
   String? _token;
   UserModel? _currentUser;
 
@@ -20,9 +25,54 @@ class ApiService {
   String? get token => _token;
   UserModel? get currentUser => _currentUser;
 
+  static String formatDioError(dynamic error) {
+    if (error is DioException) {
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+          return 'Connection timed out. Server is taking too long to respond.';
+        case DioExceptionType.sendTimeout:
+          return 'Sending request timed out. Please check your internet connection.';
+        case DioExceptionType.receiveTimeout:
+          return 'Server response timed out. Please try again.';
+        case DioExceptionType.badCertificate:
+          return 'Security certificate error. Connection could not be verified.';
+        case DioExceptionType.connectionError:
+          return "Can't reach the server. Check your internet connection or server address.";
+        case DioExceptionType.cancel:
+          return 'Request was cancelled.';
+        case DioExceptionType.badResponse:
+          final statusCode = error.response?.statusCode;
+          final data = error.response?.data;
+          String? serverMessage;
+          if (data is Map && (data['error'] != null || data['message'] != null)) {
+            serverMessage = (data['error'] ?? data['message']).toString();
+          }
+          if (statusCode == 401) {
+            return serverMessage ?? 'Invalid username or password.';
+          } else if (statusCode == 403) {
+            return serverMessage ?? 'Access denied. Your account lacks required permissions.';
+          } else if (statusCode == 404) {
+            return serverMessage ?? 'Requested endpoint not found.';
+          } else if (statusCode == 429) {
+            return serverMessage ?? 'Too many requests. Please wait a minute and try again.';
+          } else if (statusCode != null && statusCode >= 500) {
+            return serverMessage ?? 'Server error ($statusCode). Please try again shortly.';
+          }
+          return serverMessage ?? 'Request failed with status $statusCode.';
+        case DioExceptionType.unknown:
+        default:
+          if (error.message != null && error.message!.isNotEmpty) {
+            return 'Network error: ${error.message}';
+          }
+          return 'Can\'t reach the server. Please check your internet connection.';
+      }
+    }
+    return error?.toString().replaceFirst('Exception: ', '') ?? 'An unexpected error occurred.';
+  }
+
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
-    _baseUrl = prefs.getString('server_base_url') ?? 'http://34.180.17.0:5050';
+    _baseUrl = prefs.getString('server_base_url') ?? defaultBaseUrl;
     _token = prefs.getString('jwt_token');
 
     _dio = Dio(
@@ -63,6 +113,66 @@ class ApiService {
     await prefs.setString('server_base_url', cleanUrl);
   }
 
+  Future<Response<T>> _executeWithRetry<T>(
+    Future<Response<T>> Function() requestFn, {
+    int maxRetries = 1,
+    Duration delay = const Duration(milliseconds: 1500),
+  }) async {
+    int attempts = 0;
+    while (true) {
+      try {
+        return await requestFn();
+      } on DioException catch (e) {
+        attempts++;
+        final isTransient = e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.sendTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.connectionError;
+        if (attempts <= maxRetries && isTransient) {
+          await Future.delayed(delay * attempts);
+          continue;
+        }
+        rethrow;
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> testConnection([String? customUrl]) async {
+    final targetUrl = customUrl ?? _baseUrl;
+    final stopwatch = Stopwatch()..start();
+    try {
+      final probeDio = Dio(
+        BaseOptions(
+          baseUrl: targetUrl,
+          connectTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 5),
+        ),
+      );
+      final response = await probeDio.get('/api/health');
+      stopwatch.stop();
+      return {
+        'success': response.statusCode == 200,
+        'latencyMs': stopwatch.elapsedMilliseconds,
+        'message': 'Connected (${stopwatch.elapsedMilliseconds} ms)',
+        'data': response.data,
+      };
+    } on DioException catch (e) {
+      stopwatch.stop();
+      return {
+        'success': false,
+        'latencyMs': stopwatch.elapsedMilliseconds,
+        'message': formatDioError(e),
+      };
+    } catch (e) {
+      stopwatch.stop();
+      return {
+        'success': false,
+        'latencyMs': stopwatch.elapsedMilliseconds,
+        'message': e.toString(),
+      };
+    }
+  }
+
   Future<void> setToken(String? token) async {
     _token = token;
     final prefs = await SharedPreferences.getInstance();
@@ -82,10 +192,12 @@ class ApiService {
 
   Future<Map<String, dynamic>> login(String identifier, String password) async {
     try {
-      final response = await _dio.post('/api/auth/login', data: {
-        'identifier': identifier,
-        'password': password,
-      });
+      final response = await _executeWithRetry(
+        () => _dio.post('/api/auth/login', data: {
+          'identifier': identifier,
+          'password': password,
+        }),
+      );
 
       if (response.statusCode == 200) {
         final data = response.data;
@@ -95,7 +207,7 @@ class ApiService {
       }
       throw Exception(response.data['error'] ?? 'Login failed');
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? e.message ?? 'Connection error');
+      throw Exception(formatDioError(e));
     }
   }
 
@@ -120,10 +232,12 @@ class ApiService {
 
   Future<Map<String, dynamic>> getCurrentAttendanceStatus() async {
     try {
-      final response = await _dio.get('/api/attendance/current');
+      final response = await _executeWithRetry(
+        () => _dio.get('/api/attendance/current'),
+      );
       return response.data;
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to get status');
+      throw Exception(formatDioError(e));
     }
   }
 

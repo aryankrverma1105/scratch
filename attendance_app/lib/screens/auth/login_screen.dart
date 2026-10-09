@@ -11,11 +11,13 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _identifierController = TextEditingController(text: 'admin@company.com');
-  final _passwordController = TextEditingController(text: 'admin123');
+  final _identifierController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+  bool _isTestingConnection = false;
   String? _errorMessage;
+  String? _connectionStatus;
 
   @override
   void dispose() {
@@ -49,7 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+        _errorMessage = ApiService.formatDioError(e);
       });
     } finally {
       if (mounted) {
@@ -60,67 +62,18 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _showServerConfigDialog() {
-    final serverController = TextEditingController(text: ApiService().baseUrl);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.cardDark,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Server Configuration',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter GCP VM IP or Domain (HTTPS/HTTP):',
-              style: TextStyle(color: AppColors.textMuted, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: serverController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: AppColors.inputDark,
-                hintText: 'http://34.180.17.0:5050',
-                hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.info,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () async {
-              await ApiService().setBaseUrl(serverController.text);
-              if (mounted) Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  backgroundColor: AppColors.success,
-                  content: Text('Server updated: ${serverController.text}'),
-                ),
-              );
-            },
-            child: const Text('Save', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+  Future<void> _testServerConnection() async {
+    setState(() {
+      _isTestingConnection = true;
+    });
+
+    final res = await ApiService().testConnection();
+
+    if (!mounted) return;
+    setState(() {
+      _isTestingConnection = false;
+      _connectionStatus = res['message'];
+    });
   }
 
   @override
@@ -141,15 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Server config icon at top right
-                  Align(
-                    alignment: Alignment.topRight,
-                    child: IconButton(
-                      icon: const Icon(Icons.settings_outlined, color: AppColors.textMuted),
-                      tooltip: 'Configure GCP Server URL',
-                      onPressed: _showServerConfigDialog,
-                    ),
-                  ),
+                  const SizedBox(height: 10),
 
                   // Logo
                   Container(
@@ -215,9 +160,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: AppColors.error.withOpacity(0.15),
+                              color: AppColors.error.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppColors.error.withOpacity(0.4)),
+                              border: Border.all(color: AppColors.error.withValues(alpha: 0.4)),
                             ),
                             child: Row(
                               children: [
@@ -330,23 +275,61 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 20),
 
-                  // Quick test credentials hint
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceDark.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.info_outline, size: 16, color: AppColors.textMuted),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Default Admin: admin@company.com / admin123',
-                          style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.7)),
+                  // Current Server Info & Test Connection Button
+                  InkWell(
+                    onTap: _isTestingConnection ? null : _testServerConnection,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceDark.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _connectionStatus != null
+                              ? (_connectionStatus!.startsWith('Connected')
+                                  ? AppColors.success
+                                  : AppColors.error)
+                              : Colors.white12,
                         ),
-                      ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _connectionStatus != null
+                                ? (_connectionStatus!.startsWith('Connected')
+                                    ? Icons.check_circle_outline
+                                    : Icons.error_outline)
+                                : Icons.cloud_outlined,
+                            size: 15,
+                            color: _connectionStatus != null
+                                ? (_connectionStatus!.startsWith('Connected')
+                                    ? AppColors.success
+                                    : AppColors.error)
+                                : AppColors.textMuted,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _isTestingConnection
+                                ? 'Testing connection...'
+                                : (_connectionStatus ?? 'Server: ${ApiService().baseUrl}'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white.withValues(alpha: 0.8),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (!_isTestingConnection)
+                            const Text(
+                              '• Test',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.info,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
 

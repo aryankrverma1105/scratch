@@ -81,10 +81,8 @@ cd backend
 npm install
 npm start
 ```
-- Health Check: `http://localhost:5000/api/health`
-- Default Administrator Credentials:
-  - **Email:** `admin@company.com`
-  - **Password:** `admin123`
+- Health Check: `http://localhost:5050/api/health`
+- On initial launch, administrator credentials are configured via environment variables or securely generated on startup (see [docs/MANUAL_STEPS.md](docs/MANUAL_STEPS.md)).
 
 ---
 
@@ -95,7 +93,7 @@ cd attendance_app
 flutter pub get
 flutter run -d <your-android-device-or-emulator>
 ```
-> **Tip for Android Emulator:** The app defaults to `http://10.0.2.2:5000`. You can tap the ⚙️ icon on the Login screen or in the Profile screen to point directly to your GCP VM IP (`http://<YOUR_VM_IP>:5000` or `https://<YOUR_DOMAIN>`).
+> The app connects to the configured server (`http://34.180.17.0:5050` or defined via `--dart-define=API_BASE_URL=...`). Tap the connection status pill on the login screen to verify connectivity.
 
 ---
 
