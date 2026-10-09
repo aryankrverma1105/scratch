@@ -32,54 +32,72 @@ In production, Node.js binds to `127.0.0.1:5050` locally, and Nginx terminates H
 
 ---
 
-## 2. Static External IP & Domain (DNS) Setup
+## 2. Using Without a Purchased Domain (Two Options)
 
-### A. Reserve a Static External IP in GCP
-1. Go to **VPC Network > IP Addresses**.
-2. Find the external IP of your VM instance (`34.180.17.0`).
-3. Click the three dots icon next to it and select **Promote to static IP address**.
-4. Name it `sologix-attendance-ip` and save.
+If you do NOT own a custom domain name (e.g. `sologixenergy.com`), you have two simple options:
 
-### B. Configure DNS A Record
-1. In your domain registrar (GoDaddy, Cloudflare, Namecheap, Google Domains):
-2. Add an **A Record**:
-   - **Type**: `A`
-   - **Host/Name**: `api` (for `api.sologixenergy.com`) or `@`
-   - **Value/Points to**: `34.180.17.0`
-   - **TTL**: `300` (5 minutes)
-3. Wait 5-10 minutes for DNS propagation, verify using:
-   ```bash
-   nslookup api.sologixenergy.com
-   ```
+### Option A: Use Direct IP Over HTTP (Fastest & Simplest)
+You do not need to buy any domain or set up SSL.
+- **Port 5050:** The app connects directly to `http://34.180.17.0:5050` (the default in the code).
+- **Port 80 (via Nginx):** Or run Nginx as a reverse proxy, and connect to `http://34.180.17.0`.
+- **Android Configuration:** The mobile app's `network_security_config.xml` has been configured to explicitly permit cleartext HTTP traffic to `34.180.17.0` in both debug and release builds.
+- **GCP Firewall Rule:**
+  1. Open [GCP Console > VPC network > Firewall](https://console.cloud.google.com/networking/firewalls).
+  2. Ensure TCP port `5050` (or `80`) is allowed from `0.0.0.0/0`.
+
+### Option B: Free HTTPS / SSL with `sslip.io` (Zero Cost, No Registration)
+`sslip.io` is a free public wildcard DNS service. Any IP automatically has a domain that resolves directly to it:
+- **Your Free Domain:** `34.180.17.0.sslip.io` (already resolves worldwide to `34.180.17.0`).
+- Because it is a valid domain, **Let's Encrypt (Certbot) can issue a real, free HTTPS SSL certificate for it!**
+
+#### Steps to enable free HTTPS on your VM:
+```bash
+# 1. SSH into your GCP VM
+ssh user@34.180.17.0
+
+# 2. Issue free Let's Encrypt SSL certificate using certbot:
+sudo certbot --nginx -d 34.180.17.0.sslip.io
+
+# 3. Follow on-screen prompt to enter your email and agree to terms.
+```
+
+Certbot will automatically install the certificate into Nginx and redirect HTTP to HTTPS.
 
 ---
 
-## 3. SSL / HTTPS Certificate with Let's Encrypt (Certbot)
+## 3. Building the Flutter App
 
-Run the following commands on your GCP VM after pointing your domain to the VM:
-```bash
-# 1. Install certbot and Nginx plugin
-sudo apt-get update
-sudo apt-get install -y certbot python3-certbot-nginx
+Depending on which option you choose above:
 
-# 2. Issue and install certificate automatically into Nginx
-sudo certbot --nginx -d api.sologixenergy.com
-
-# 3. Test automatic certificate renewal
-sudo certbot renew --dry-run
-```
-Certbot will configure HTTPS redirects (HTTP 80 -> HTTPS 443) and manage TLS certificates automatically.
-
-### B. Point Flutter Mobile App to Production HTTPS Domain
-Once SSL is activated, build the mobile app pointing to your HTTPS domain using `--dart-define`:
+### With Direct IP (Option A):
 ```bash
 cd attendance_app
-flutter build apk --release --dart-define=API_BASE_URL=https://api.sologixenergy.com
+# Debug:
+flutter run
+
+# Release APK:
+flutter build apk --release
 ```
-Or for debug testing:
+*(The default `API_BASE_URL` in code is already set to `http://34.180.17.0:5050`)*
+
+### With Free HTTPS via `sslip.io` (Option B):
 ```bash
-flutter run --dart-define=API_BASE_URL=https://api.sologixenergy.com
+cd attendance_app
+# Debug:
+flutter run --dart-define=API_BASE_URL=https://34.180.17.0.sslip.io
+
+# Release APK:
+flutter build apk --release --dart-define=API_BASE_URL=https://34.180.17.0.sslip.io
 ```
+
+---
+
+## 3.1 Custom Domain DNS & SSL (Optional, If You Acquire a Domain Later)
+
+If you purchase a custom domain later:
+1. Add an **A Record** in your registrar pointing to `34.180.17.0`.
+2. Run `sudo certbot --nginx -d yourdomain.com` on the VM.
+3. Build the app with `--dart-define=API_BASE_URL=https://yourdomain.com`.
 
 ---
 
