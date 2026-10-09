@@ -285,6 +285,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     final passwordController = TextEditingController();
     String selectedRole = 'employee';
     bool isSubmitting = false;
+    String? modalError;
 
     showModalBottomSheet(
       context: context,
@@ -424,14 +425,39 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                   style: const TextStyle(color: Colors.white),
                   obscureText: true,
                   decoration: InputDecoration(
-                    labelText: 'Initial Password *',
+                    labelText: 'Initial Password * (min 6 chars)',
                     labelStyle: const TextStyle(color: AppColors.textMuted),
                     filled: true,
                     fillColor: AppColors.inputDark,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
+
+                // In-modal Error Display
+                if (modalError != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.error.withValues(alpha: 0.5)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            modalError!,
+                            style: const TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
 
                 // Submit Button
                 SizedBox(
@@ -451,16 +477,20 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                             final pass = passwordController.text;
 
                             if (name.isEmpty || email.isEmpty || pass.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  backgroundColor: AppColors.warning,
-                                  content: Text('Please fill all required fields'),
-                                ),
-                              );
+                              setModalState(() => modalError = 'Please fill all required fields');
                               return;
                             }
 
-                            setModalState(() => isSubmitting = true);
+                            if (pass.length < 6) {
+                              setModalState(() => modalError = 'Password must be at least 6 characters');
+                              return;
+                            }
+
+                            setModalState(() {
+                              isSubmitting = true;
+                              modalError = null;
+                            });
+
                             try {
                               await ApiService().adminCreateUser(
                                 fullName: name,
@@ -481,17 +511,18 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                 );
                               }
                             } catch (e) {
-                              setModalState(() => isSubmitting = false);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  backgroundColor: AppColors.error,
-                                  content: Text(e.toString().replaceFirst('Exception: ', '')),
-                                ),
-                              );
+                              setModalState(() {
+                                isSubmitting = false;
+                                modalError = e.toString().replaceFirst('Exception: ', '');
+                              });
                             }
                           },
                     child: isSubmitting
-                        ? const CircularProgressIndicator(color: Colors.black)
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2.5),
+                          )
                         : const Text('Create User Account', style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),

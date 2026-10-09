@@ -429,18 +429,34 @@ class ApiService {
     String? phone,
   }) async {
     try {
-      final response = await _dio.post('/api/admin/users', data: {
+      final data = <String, dynamic>{
         'email': email,
         'password': password,
         'full_name': fullName,
         'role': role,
-        'username': username,
-        'department': department,
-        'phone': phone,
-      });
+      };
+      if (username != null && username.trim().isNotEmpty) {
+        data['username'] = username.trim();
+      }
+      if (department != null && department.trim().isNotEmpty) {
+        data['department'] = department.trim();
+      }
+      if (phone != null && phone.trim().isNotEmpty) {
+        data['phone'] = phone.trim();
+      }
+      final response = await _dio.post('/api/admin/users', data: data);
       return UserModel.fromJson(response.data['user']);
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to create user');
+      String? detailMsg;
+      if (e.response?.data is Map) {
+        final data = e.response!.data as Map;
+        if (data['details'] is List && (data['details'] as List).isNotEmpty) {
+          detailMsg = (data['details'] as List).map((d) => d['message']).join(', ');
+        } else if (data['error'] != null) {
+          detailMsg = data['error'].toString();
+        }
+      }
+      throw Exception(detailMsg ?? formatDioError(e));
     }
   }
 
