@@ -1,17 +1,36 @@
-# attendance_app
+# Sologix Energy - Attendance & Tracking Flutter App
 
-A new Flutter project.
+> **Designed and developed by Aryan Kumar Verma**  
+> *Sologix Energy – Energizing Naturally*
 
-## Getting Started
+Android client application for Sologix Energy employee attendance logging and continuous background GPS tracking.
 
-This project is a starting point for a Flutter application.
+## 🛠️ Build & Run Instructions
 
-A few resources to get you started if this is your first Flutter project:
+### Prerequisites
+- Flutter SDK 3.29+ (or 3.24+)
+- Android SDK (API 34/35) & Java 17
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### Development
+```bash
+flutter pub get
+flutter run
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### Static Analysis & Tests
+```bash
+flutter analyze
+flutter test
+```
+
+### Building APK
+- **Debug Build:**
+  ```bash
+  flutter build apk --debug
+  ```
+- **Release Build (Signed):**
+  ```bash
+  flutter build apk --release --dart-define=API_BASE_URL=https://api.yourdomain.com
+  ```
+
+For signing configuration, consult `docs/MANUAL_STEPS.md`.
