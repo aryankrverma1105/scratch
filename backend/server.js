@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const path = require('path');
 const config = require('./src/config');
 const { initDatabase } = require('./src/db');
 
@@ -10,6 +9,7 @@ const authRoutes = require('./src/routes/authRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const attendanceRoutes = require('./src/routes/attendanceRoutes');
 const locationRoutes = require('./src/routes/locationRoutes');
+const fileRoutes = require('./src/routes/fileRoutes');
 
 const app = express();
 
@@ -17,13 +17,22 @@ const app = express();
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
-app.use(cors());
+
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
+  : '*';
+
+app.use(cors({
+  origin: allowedOrigins,
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(morgan('dev'));
-
-// Static uploads directory (selfies)
-app.use('/uploads', express.static(config.UPLOAD_DIR));
+if (process.env.NODE_ENV !== 'test') {
+  app.use(morgan('dev'));
+}
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -41,6 +50,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/location', locationRoutes);
+app.use('/api/files', fileRoutes); // Authenticated selfies
 
 // 404 handler
 app.use((req, res) => {
@@ -49,7 +59,6 @@ app.use((req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Unhandled server error:', err);
   res.status(err.status || 500).json({
     error: err.message || 'Internal Server Error',
   });
@@ -58,17 +67,18 @@ app.use((err, req, res, next) => {
 // Start server
 async function start() {
   try {
+    config.validateProductionSecurity();
     await initDatabase();
-    app.listen(config.PORT, '0.0.0.0', () => {
+    const server = app.listen(config.PORT, '0.0.0.0', () => {
       console.log(`=======================================================`);
       console.log(`🚀 Sologix Energy Backend API running on port ${config.PORT}`);
       console.log(`   Designed and developed by Aryan Kumar Verma`);
       console.log(`   Health check: http://localhost:${config.PORT}/api/health`);
-      console.log(`   Default Admin: ${config.ADMIN_DEFAULT_EMAIL} / ${config.ADMIN_DEFAULT_PASSWORD}`);
       console.log(`=======================================================`);
     });
+    return server;
   } catch (err) {
-    console.error('Failed to initialize server:', err);
+    console.error('Failed to initialize server:', err.message);
     process.exit(1);
   }
 }

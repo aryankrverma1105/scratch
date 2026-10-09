@@ -58,6 +58,7 @@ async function login(req, res) {
         role: user.role,
         department: user.department,
         phone: user.phone,
+        must_change_password: !!user.must_change_password,
       },
       activeAttendance: activeAttendance || null,
     });
@@ -70,7 +71,7 @@ async function login(req, res) {
 async function getProfile(req, res) {
   try {
     const user = await db.get(
-      'SELECT id, email, username, full_name, role, department, phone, created_at FROM users WHERE id = ?',
+      'SELECT id, email, username, full_name, role, department, phone, must_change_password, created_at FROM users WHERE id = ?',
       [req.user.id]
     );
 
@@ -80,7 +81,12 @@ async function getProfile(req, res) {
     );
 
     return res.json({
-      user,
+      user: user
+        ? {
+            ...user,
+            must_change_password: !!user.must_change_password,
+          }
+        : null,
       activeAttendance: activeAttendance || null,
     });
   } catch (error) {
@@ -103,7 +109,7 @@ async function changePassword(req, res) {
 
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(newPassword, salt);
-    await db.run('UPDATE users SET password_hash = ? WHERE id = ?', [hash, req.user.id]);
+    await db.run('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?', [hash, req.user.id]);
 
     return res.json({ message: 'Password changed successfully' });
   } catch (error) {

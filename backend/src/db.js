@@ -108,6 +108,7 @@ async function initDatabase() {
         department VARCHAR(100),
         phone VARCHAR(50),
         is_active BOOLEAN DEFAULT TRUE,
+        must_change_password BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )`
     : `CREATE TABLE IF NOT EXISTS users (
@@ -120,6 +121,7 @@ async function initDatabase() {
         department TEXT,
         phone TEXT,
         is_active INTEGER DEFAULT 1,
+        must_change_password INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`;
 
@@ -214,14 +216,21 @@ async function initDatabase() {
   await run(locationTracksTable);
   await run(gpsAlertsTable);
 
-  // Seed default Admin if not exists
-  const existingAdmin = await get('SELECT id FROM users WHERE email = ?', [config.ADMIN_DEFAULT_EMAIL]);
+  // Schema migration for existing installations
+  try {
+    await run(`ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0`);
+  } catch (_) {}
+
+  // Seed Admin on first run with random password if no admin exists
+  const existingAdmin = await get("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
   if (!existingAdmin) {
+    const crypto = require('crypto');
+    const randomPassword = process.env.ADMIN_INITIAL_PASSWORD || crypto.randomBytes(8).toString('hex');
     const salt = await bcrypt.genSalt(10);
-    const hash = await bcrypt.hash(config.ADMIN_DEFAULT_PASSWORD, salt);
+    const hash = await bcrypt.hash(randomPassword, salt);
     await run(
-      `INSERT INTO users (email, username, password_hash, full_name, role, department, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (email, username, password_hash, full_name, role, department, is_active, must_change_password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         config.ADMIN_DEFAULT_EMAIL,
         'admin',
@@ -230,9 +239,15 @@ async function initDatabase() {
         'admin',
         'Management',
         1,
+        1,
       ]
     );
-    console.log(`Default admin created: ${config.ADMIN_DEFAULT_EMAIL} / ${config.ADMIN_DEFAULT_PASSWORD}`);
+    console.log(`=======================================================`);
+    console.log(`🔐 FIRST-RUN ADMIN CREATED:`);
+    console.log(`   Email:    ${config.ADMIN_DEFAULT_EMAIL}`);
+    console.log(`   Password: ${randomPassword}`);
+    console.log(`   (Password change required on first login)`);
+    console.log(`=======================================================`);
   }
 }
 

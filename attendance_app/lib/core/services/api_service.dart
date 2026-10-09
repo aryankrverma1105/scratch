@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/user_model.dart';
 import '../../models/attendance_model.dart';
@@ -16,6 +17,7 @@ class ApiService {
     defaultValue: 'http://34.180.17.0:5050',
   );
 
+  final _secureStorage = const FlutterSecureStorage();
   late Dio _dio;
   String _baseUrl = defaultBaseUrl;
   String? _token;
@@ -73,7 +75,23 @@ class ApiService {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _baseUrl = prefs.getString('server_base_url') ?? defaultBaseUrl;
-    _token = prefs.getString('jwt_token');
+
+    try {
+      _token = await _secureStorage.read(key: 'jwt_token');
+    } catch (_) {
+      _token = null;
+    }
+
+    // Migration from SharedPreferences if secure storage was empty
+    if (_token == null && prefs.containsKey('jwt_token')) {
+      final legacyToken = prefs.getString('jwt_token');
+      if (legacyToken != null) {
+        _token = legacyToken;
+        try {
+          await _secureStorage.write(key: 'jwt_token', value: legacyToken);
+        } catch (_) {}
+      }
+    }
 
     _dio = Dio(
       BaseOptions(
@@ -101,6 +119,23 @@ class ApiService {
       ),
     );
   }
+
+  String getSelfieUrl(String? filename) {
+    if (filename == null || filename.isEmpty) return '';
+    if (filename.startsWith('http://') || filename.startsWith('https://')) {
+      return filename;
+    }
+    final clean = filename
+        .replaceAll('/uploads/selfies/', '')
+        .replaceAll('uploads/selfies/', '')
+        .replaceAll('/uploads/', '')
+        .replaceAll('uploads/', '');
+    return '$_baseUrl/api/files/selfies/$clean';
+  }
+
+  Map<String, String> get authHeaders => {
+    if (_token != null) 'Authorization': 'Bearer $_token',
+  };
 
   Future<void> setBaseUrl(String url) async {
     String cleanUrl = url.trim();
@@ -177,8 +212,14 @@ class ApiService {
     _token = token;
     final prefs = await SharedPreferences.getInstance();
     if (token != null) {
+      try {
+        await _secureStorage.write(key: 'jwt_token', value: token);
+      } catch (_) {}
       await prefs.setString('jwt_token', token);
     } else {
+      try {
+        await _secureStorage.delete(key: 'jwt_token');
+      } catch (_) {}
       await prefs.remove('jwt_token');
       _currentUser = null;
     }
