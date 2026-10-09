@@ -8,6 +8,7 @@ import '../../core/services/api_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/background_tracker.dart';
 import '../../core/services/sync_service.dart';
+import '../../core/services/outbox_service.dart';
 import '../../core/services/permission_service.dart';
 import 'permissions_screen.dart';
 import '../../models/attendance_model.dart';
@@ -265,60 +266,114 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _isActionLoading = true);
 
       if (isCheckIn) {
-        final newRecord = await ApiService().checkIn(
-          latitude: gpsResult.position.latitude,
-          longitude: gpsResult.position.longitude,
-          accuracy: gpsResult.position.accuracy,
-          isMocked: gpsResult.isMocked,
-          selfieFile: confirmedSelfieFile,
-        );
-
-        setState(() {
-          _activeAttendance = newRecord;
-        });
-
-        _startWorkTimer();
-        // Start continuous GPS tracking (Requirement 8 & 10)
-        _locationService.startContinuousTracking();
-        await BackgroundTrackerService.startTracking();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              backgroundColor: gpsResult.isMocked ? AppColors.warning : AppColors.success,
-              content: Text(
-                gpsResult.isMocked
-                    ? '⚠️ Checked in (Flagged: Mock Location detected). Continuous tracking active.'
-                    : '✅ Checked In successfully! GPS Tracking Active.',
-              ),
-            ),
+        try {
+          final newRecord = await ApiService().checkIn(
+            latitude: gpsResult.position.latitude,
+            longitude: gpsResult.position.longitude,
+            accuracy: gpsResult.position.accuracy,
+            isMocked: gpsResult.isMocked,
+            selfieFile: confirmedSelfieFile,
           );
+
+          setState(() {
+            _activeAttendance = newRecord;
+          });
+
+          _startWorkTimer();
+          _locationService.startContinuousTracking();
+          await BackgroundTrackerService.startTracking();
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                backgroundColor: gpsResult.isMocked ? AppColors.warning : AppColors.success,
+                content: Text(
+                  gpsResult.isMocked
+                      ? '⚠️ Checked in (Flagged: Mock Location detected). Continuous tracking active.'
+                      : '✅ Checked In successfully! GPS Tracking Active.',
+                ),
+              ),
+            );
+          }
+        } catch (apiErr) {
+          final errStr = apiErr.toString();
+          if (errStr.contains("reach the server") || errStr.contains("timed out") || errStr.contains("SocketException")) {
+            await OutboxService().enqueueSelfieAction(
+              actionType: 'check_in',
+              selfiePath: confirmedSelfieFile.path,
+              latitude: gpsResult.position.latitude,
+              longitude: gpsResult.position.longitude,
+              accuracy: gpsResult.position.accuracy,
+              isMocked: gpsResult.isMocked,
+            );
+            _locationService.startContinuousTracking();
+            await BackgroundTrackerService.startTracking();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  backgroundColor: AppColors.warning,
+                  content: Text('Offline: Check-in selfie queued locally. Tracking active; will sync on reconnect.'),
+                ),
+              );
+            }
+          } else {
+            rethrow;
+          }
         }
       } else {
-        await ApiService().checkOut(
-          latitude: gpsResult.position.latitude,
-          longitude: gpsResult.position.longitude,
-          accuracy: gpsResult.position.accuracy,
-          isMocked: gpsResult.isMocked,
-          selfieFile: confirmedSelfieFile,
-        );
-
-        setState(() {
-          _activeAttendance = null;
-        });
-
-        _stopWorkTimer();
-        // Stop continuous tracking (Requirement 9)
-        _locationService.stopContinuousTracking();
-        await BackgroundTrackerService.stopTracking();
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              backgroundColor: AppColors.info,
-              content: Text('🏁 Checked Out successfully! GPS Tracking Stopped.'),
-            ),
+        try {
+          await ApiService().checkOut(
+            latitude: gpsResult.position.latitude,
+            longitude: gpsResult.position.longitude,
+            accuracy: gpsResult.position.accuracy,
+            isMocked: gpsResult.isMocked,
+            selfieFile: confirmedSelfieFile,
           );
+
+          setState(() {
+            _activeAttendance = null;
+          });
+
+          _stopWorkTimer();
+          _locationService.stopContinuousTracking();
+          await BackgroundTrackerService.stopTracking();
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                backgroundColor: AppColors.info,
+                content: Text('🏁 Checked Out successfully! GPS Tracking Stopped.'),
+              ),
+            );
+          }
+        } catch (apiErr) {
+          final errStr = apiErr.toString();
+          if (errStr.contains("reach the server") || errStr.contains("timed out") || errStr.contains("SocketException")) {
+            await OutboxService().enqueueSelfieAction(
+              actionType: 'check_out',
+              selfiePath: confirmedSelfieFile.path,
+              latitude: gpsResult.position.latitude,
+              longitude: gpsResult.position.longitude,
+              accuracy: gpsResult.position.accuracy,
+              isMocked: gpsResult.isMocked,
+            );
+            setState(() {
+              _activeAttendance = null;
+            });
+            _stopWorkTimer();
+            _locationService.stopContinuousTracking();
+            await BackgroundTrackerService.stopTracking();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  backgroundColor: AppColors.warning,
+                  content: Text('Offline: Check-out queued locally. Will sync automatically upon reconnect.'),
+                ),
+              );
+            }
+          } else {
+            rethrow;
+          }
         }
       }
     } catch (e) {

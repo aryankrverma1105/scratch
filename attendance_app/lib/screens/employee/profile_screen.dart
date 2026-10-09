@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/background_tracker.dart';
+import '../../core/services/location_service.dart';
 import '../../models/user_model.dart';
 import '../auth/login_screen.dart';
 import 'permissions_screen.dart';
@@ -76,16 +78,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showLogoutDialog() {
+  Future<void> _showLogoutDialog() async {
+    bool isCheckedIn = false;
+    try {
+      final status = await ApiService().getCurrentAttendanceStatus();
+      isCheckedIn = status['activeAttendance'] != null;
+    } catch (_) {}
+
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.cardDark,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Sign Out', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: const Text(
-          'Are you sure you want to sign out of Sologix Energy?',
-          style: TextStyle(color: AppColors.textDim),
+        title: Row(
+          children: [
+            if (isCheckedIn) const Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 24),
+            if (isCheckedIn) const SizedBox(width: 8),
+            Text(isCheckedIn ? 'Warning: Active Shift' : 'Sign Out',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          isCheckedIn
+              ? '⚠️ You are currently checked in on active duty!\n\nSigning out will stop continuous GPS tracking, but your attendance shift will remain open on the server until check-out.\n\nAre you sure you want to sign out now?'
+              : 'Are you sure you want to sign out of Sologix Energy?',
+          style: const TextStyle(color: AppColors.textDim),
         ),
         actions: [
           TextButton(
@@ -99,6 +118,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
+              await BackgroundTrackerService.stopTracking();
+              LocationService().stopContinuousTracking();
               await ApiService().logout();
               if (mounted) {
                 Navigator.pushAndRemoveUntil(

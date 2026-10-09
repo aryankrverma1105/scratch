@@ -174,6 +174,7 @@ async function initDatabase() {
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id),
         attendance_id INTEGER REFERENCES attendance(id),
+        client_point_id VARCHAR(100),
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         accuracy REAL,
@@ -188,6 +189,7 @@ async function initDatabase() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER REFERENCES users(id),
         attendance_id INTEGER REFERENCES attendance(id),
+        client_point_id TEXT,
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         accuracy REAL,
@@ -244,6 +246,12 @@ async function initDatabase() {
   } catch (_) {}
   try {
     await run(`ALTER TABLE location_tracks ADD COLUMN is_mocked INTEGER DEFAULT 0`);
+  } catch (_) {}
+  try {
+    await run(`ALTER TABLE location_tracks ADD COLUMN client_point_id TEXT`);
+  } catch (_) {}
+  try {
+    await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_client_pt ON location_tracks(user_id, client_point_id) WHERE client_point_id IS NOT NULL`);
   } catch (_) {}
 
   // Seed Admin on first run with random password if no admin exists

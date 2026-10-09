@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import 'api_service.dart';
+import 'outbox_service.dart';
 
 class SyncStatus {
   final bool isOnline;
@@ -42,17 +42,11 @@ class SyncService {
   factory SyncService() => _instance;
   SyncService._internal();
 
-  static const String _offlineQueueKey = 'offline_pending_locations_v1';
   final ValueNotifier<SyncStatus> statusNotifier = ValueNotifier(const SyncStatus());
-
   Timer? _periodicSyncTimer;
 
   Future<void> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    final queue = _getQueue(prefs);
-    statusNotifier.value = statusNotifier.value.copyWith(
-      pendingLocationsCount: queue.length,
-    );
+    await updatePendingCount();
 
     // Periodic sync check every 45 seconds
     _periodicSyncTimer?.cancel();
@@ -64,25 +58,17 @@ class SyncService {
     syncNow();
   }
 
-  List<Map<String, dynamic>> _getQueue(SharedPreferences prefs) {
-    final raw = prefs.getString(_offlineQueueKey);
-    if (raw == null || raw.isEmpty) return [];
+  Future<void> updatePendingCount() async {
     try {
-      final List decoded = jsonDecode(raw);
-      return decoded.map((e) => Map<String, dynamic>.from(e)).toList();
-    } catch (_) {
-      return [];
-    }
+      final count = await OutboxService().getPendingPointsCount();
+      final selfieCount = await OutboxService().getPendingSelfiesCount();
+      statusNotifier.value = statusNotifier.value.copyWith(
+        pendingLocationsCount: count + selfieCount,
+      );
+    } catch (_) {}
   }
 
-  Future<void> _saveQueue(SharedPreferences prefs, List<Map<String, dynamic>> queue) async {
-    await prefs.setString(_offlineQueueKey, jsonEncode(queue));
-    statusNotifier.value = statusNotifier.value.copyWith(
-      pendingLocationsCount: queue.length,
-    );
-  }
-
-  // Queue location point if network is offline or request fails
+  // Queue location point using SQLite outbox
   Future<void> queueLocationPoint({
     required double latitude,
     required double longitude,
@@ -91,25 +77,14 @@ class SyncService {
     double? altitude,
     bool isGpsOff = false,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final queue = _getQueue(prefs);
-
-    queue.add({
-      'latitude': latitude,
-      'longitude': longitude,
-      'accuracy': accuracy,
-      'speed': speed,
-      'altitude': altitude,
-      'is_gps_off': isGpsOff,
-      'timestamp': DateTime.now().toIso8601String(),
-    });
-
-    // Keep max 500 points in offline cache to prevent memory explosion
-    if (queue.length > 500) {
-      queue.removeRange(0, queue.length - 500);
-    }
-
-    await _saveQueue(prefs, queue);
+    await OutboxService().enqueueLocationPoint(
+      latitude: latitude,
+      longitude: longitude,
+      accuracy: accuracy,
+      speed: speed,
+      isGpsOff: isGpsOff,
+    );
+    await updatePendingCount();
   }
 
   // Trigger full cloud synchronization with GCP VM
@@ -120,11 +95,12 @@ class SyncService {
 
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('jwt_token');
+    final baseUrl = ApiService().baseUrl;
 
     try {
       // 1. Health check probe to GCP server
       final dio = Dio(BaseOptions(
-        baseUrl: ApiService().baseUrl,
+        baseUrl: baseUrl,
         connectTimeout: const Duration(seconds: 8),
         receiveTimeout: const Duration(seconds: 8),
       ));
@@ -139,25 +115,13 @@ class SyncService {
         return false;
       }
 
-      // If user is logged in, sync offline queue
+      // If user is logged in, flush SQLite outbox
       if (token != null) {
-        final queue = _getQueue(prefs);
-        if (queue.isNotEmpty) {
-          // Batch upload queued points
-          final uploadDio = Dio(BaseOptions(
-            baseUrl: ApiService().baseUrl,
-            connectTimeout: const Duration(seconds: 15),
-            headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
-          ));
-
-          await uploadDio.post('/api/location/track', data: {
-            'locations': queue,
-          });
-
-          // Successfully uploaded, clear offline queue
-          await _saveQueue(prefs, []);
-        }
+        await OutboxService().flushBatch(baseUrl: baseUrl, token: token);
+        await OutboxService().replaySelfies(baseUrl: baseUrl, token: token);
       }
+
+      await updatePendingCount();
 
       statusNotifier.value = statusNotifier.value.copyWith(
         isOnline: true,
@@ -168,10 +132,11 @@ class SyncService {
       return true;
     } catch (e) {
       debugPrint('Sync failed or offline: $e');
+      await updatePendingCount();
       statusNotifier.value = statusNotifier.value.copyWith(
         isOnline: false,
         isSyncing: false,
-        message: 'Network offline. Actions will sync upon reconnect.',
+        message: 'Network offline. Outbox will flush upon reconnect.',
       );
       return false;
     }

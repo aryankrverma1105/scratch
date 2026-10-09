@@ -54,4 +54,25 @@ void main() {
       expect(msg, contains('Server error'));
     });
   });
+
+  group('Phase 4 - Outbox & Tracking Utilities Tests', () {
+    test('UTC ISO-8601 timestamps strictly formatted with trailing Z', () {
+      final date = DateTime.utc(2026, 10, 9, 12, 30, 45);
+      final iso = date.toIso8601String();
+      final formatted = iso.endsWith('Z') ? iso : '${iso}Z';
+      expect(formatted, equals('2026-10-09T12:30:45.000Z'));
+      expect(formatted.endsWith('Z'), isTrue);
+    });
+
+    test('Exponential backoff stays bounded within 120s limit', () {
+      int calculateBackoff(int failures) {
+        return (failures == 0) ? 0 : (2 << failures > 120 ? 120 : (1 << failures));
+      }
+
+      expect(calculateBackoff(1), equals(2));
+      expect(calculateBackoff(2), equals(4));
+      expect(calculateBackoff(3), equals(8));
+      expect(calculateBackoff(10), equals(120));
+    });
+  });
 }

@@ -233,16 +233,9 @@ class LocationService {
     _positionStreamSubscription = Geolocator.getPositionStream(
       locationSettings: locationSettings,
     ).listen((Position position) {
+      // Single source of truth: Foreground service isolate does all tracking/posting.
+      // UI isolate only updates position notifier for local UI/map rendering.
       currentPositionNotifier.value = position;
-
-      // Ping location to backend
-      ApiService().sendLocationTrack(
-        latitude: position.latitude,
-        longitude: position.longitude,
-        accuracy: position.accuracy,
-        speed: position.speed,
-        altitude: position.altitude,
-      );
     });
   }
 
