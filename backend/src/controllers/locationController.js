@@ -159,10 +159,15 @@ async function reportGpsStatus(req, res) {
         });
       }
 
+      const parsedLat = latitude !== undefined && latitude !== null ? parseFloat(latitude) : NaN;
+      const parsedLng = longitude !== undefined && longitude !== null ? parseFloat(longitude) : NaN;
+      const safeLat = isNaN(parsedLat) ? null : parsedLat;
+      const safeLng = isNaN(parsedLng) ? null : parsedLng;
+
       await db.run(
         `INSERT INTO gps_alerts (user_id, alert_type, message, latitude, longitude, resolved)
          VALUES (?, ?, ?, ?, ?, 0)`,
-        [userId, alertType, message || defaultMsg, latitude || null, longitude || null]
+        [userId, alertType, message || defaultMsg, safeLat, safeLng]
       );
 
       // Trigger push notification to admin
@@ -176,8 +181,10 @@ async function reportGpsStatus(req, res) {
       });
     }
 
-    // Also insert a track marker noting GPS turned off/on
-    if (latitude !== undefined && longitude !== undefined) {
+    // Also insert a track marker noting GPS turned off/on (only if valid numeric coordinates exist)
+    const parsedTrackLat = latitude !== undefined && latitude !== null ? parseFloat(latitude) : NaN;
+    const parsedTrackLng = longitude !== undefined && longitude !== null ? parseFloat(longitude) : NaN;
+    if (!isNaN(parsedTrackLat) && !isNaN(parsedTrackLng)) {
       const activeAttendance = await db.get(
         "SELECT id FROM attendance WHERE user_id = ? AND status = 'checked_in' ORDER BY id DESC LIMIT 1",
         [userId]
@@ -189,8 +196,8 @@ async function reportGpsStatus(req, res) {
         [
           userId,
           activeAttendance ? activeAttendance.id : null,
-          parseFloat(latitude),
-          parseFloat(longitude),
+          parsedTrackLat,
+          parsedTrackLng,
           status === 'DISABLED' ? 1 : 0,
           new Date().toISOString(),
         ]
