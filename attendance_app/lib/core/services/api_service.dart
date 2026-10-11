@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/user_model.dart';
 import '../../models/attendance_model.dart';
 import '../../models/location_model.dart';
+import '../../models/leave_models.dart';
 import 'sync_service.dart';
 
 class ApiService {
@@ -560,4 +561,208 @@ class ApiService {
       throw Exception(e.response?.data?['error'] ?? 'Failed to load attendance');
     }
   }
+
+  // --- LEAVE MANAGEMENT APIs ---
+
+  Future<LeaveBalanceModel> getLeaveBalance({String? year}) async {
+    try {
+      final query = <String, dynamic>{};
+      if (year != null) query['year'] = year;
+      final response = await _dio.get('/api/leave/balance', queryParameters: query);
+      return LeaveBalanceModel.fromJson(response.data);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch leave balance');
+    }
+  }
+
+  Future<MonthlyLeaveSummaryModel> getLeaveSummary({String? month, String? year}) async {
+    try {
+      final query = <String, dynamic>{};
+      if (month != null) query['month'] = month;
+      if (year != null) query['year'] = year;
+      final response = await _dio.get('/api/leave/summary', queryParameters: query);
+      return MonthlyLeaveSummaryModel.fromJson(response.data);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch monthly leave summary');
+    }
+  }
+
+  Future<Map<String, dynamic>> getLeaveHistory({String? year}) async {
+    try {
+      final query = <String, dynamic>{};
+      if (year != null) query['year'] = year;
+      final response = await _dio.get('/api/leave/history', queryParameters: query);
+      final rawLeaves = response.data['leaves'] as List? ?? [];
+      final rawAbsences = response.data['absences'] as List? ?? [];
+      return {
+        'leaveYear': response.data['leaveYear']?.toString() ?? '',
+        'leaves': rawLeaves.map((l) => LeaveRecordModel.fromJson(l)).toList(),
+        'absences': rawAbsences.map((a) => AttendanceAbsenceModel.fromJson(a)).toList(),
+      };
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch leave history');
+    }
+  }
+
+  Future<LeaveCalculationModel> calculateLeave(String startDate, String endDate) async {
+    try {
+      final response = await _dio.post('/api/leave/calculate', data: {
+        'startDate': startDate,
+        'endDate': endDate,
+      });
+      return LeaveCalculationModel.fromJson(response.data);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to calculate leave');
+    }
+  }
+
+  Future<Map<String, dynamic>> requestLeave(String startDate, String endDate, {String? reason}) async {
+    try {
+      final response = await _dio.post('/api/leave/request', data: {
+        'startDate': startDate,
+        'endDate': endDate,
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to submit leave request');
+    }
+  }
+
+  Future<Map<String, dynamic>> cancelLeave(int leaveId, {String? reason}) async {
+    try {
+      final response = await _dio.post('/api/leave/$leaveId/cancel', data: {
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to cancel leave');
+    }
+  }
+
+  Future<HolidaysResponseModel> getCompanyHolidays({String? year}) async {
+    try {
+      final query = <String, dynamic>{};
+      if (year != null) query['year'] = year;
+      final response = await _dio.get('/api/leave/holidays', queryParameters: query);
+      return HolidaysResponseModel.fromJson(response.data);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch holidays');
+    }
+  }
+
+  // --- ADMIN LEAVE APIs ---
+
+  Future<Map<String, dynamic>> adminGetLeaveSummaries({String? month, String? year}) async {
+    try {
+      final query = <String, dynamic>{};
+      if (month != null) query['month'] = month;
+      if (year != null) query['year'] = year;
+      final response = await _dio.get('/api/leave/admin/summaries', queryParameters: query);
+      final rawSummaries = response.data['summaries'] as List? ?? [];
+      final rawThreshold = response.data['thresholdExceededUsers'] as List? ?? [];
+      return {
+        'leaveYear': response.data['leaveYear']?.toString() ?? '',
+        'month': response.data['month']?.toString() ?? '',
+        'totalUsers': response.data['totalUsers'] ?? 0,
+        'thresholdExceededCount': response.data['thresholdExceededCount'] ?? 0,
+        'summaries': rawSummaries.map((s) => AdminUserLeaveSummaryModel.fromJson(s)).toList(),
+        'thresholdExceededUsers': rawThreshold.map((s) => AdminUserLeaveSummaryModel.fromJson(s)).toList(),
+      };
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch admin leave summaries');
+    }
+  }
+
+  Future<List<LeaveRecordModel>> adminGetLeaveRecords({int? userId, String? year, String? status}) async {
+    try {
+      final query = <String, dynamic>{};
+      if (userId != null) query['userId'] = userId;
+      if (year != null) query['year'] = year;
+      if (status != null) query['status'] = status;
+      final response = await _dio.get('/api/leave/admin/records', queryParameters: query);
+      final list = (response.data['records'] as List? ?? [])
+          .map((r) => LeaveRecordModel.fromJson(r))
+          .toList();
+      return list;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch leave records');
+    }
+  }
+
+  Future<List<AttendanceAbsenceModel>> adminGetAbsences({int? userId, String? month, String? year, bool? isCorrected}) async {
+    try {
+      final query = <String, dynamic>{};
+      if (userId != null) query['userId'] = userId;
+      if (month != null) query['month'] = month;
+      if (year != null) query['year'] = year;
+      if (isCorrected != null) query['isCorrected'] = isCorrected ? '1' : '0';
+      final response = await _dio.get('/api/leave/admin/absences', queryParameters: query);
+      final list = (response.data['absences'] as List? ?? [])
+          .map((a) => AttendanceAbsenceModel.fromJson(a))
+          .toList();
+      return list;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch absences');
+    }
+  }
+
+  Future<void> adminCorrectAbsence(int absenceId, String notes) async {
+    try {
+      await _dio.post('/api/leave/admin/absences/$absenceId/correct', data: {
+        'notes': notes,
+      });
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to correct absence record');
+    }
+  }
+
+  Future<CompanyHolidayModel> adminCreateHoliday({
+    required String leaveYear,
+    required String name,
+    required String date,
+    String? description,
+  }) async {
+    try {
+      final data = <String, dynamic>{
+        'leaveYear': leaveYear,
+        'name': name,
+        'date': date,
+      };
+      if (description != null) data['description'] = description;
+      final response = await _dio.post('/api/leave/admin/holidays', data: data);
+      return CompanyHolidayModel.fromJson(response.data['holiday']);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to create holiday');
+    }
+  }
+
+  Future<CompanyHolidayModel> adminUpdateHoliday(
+    int holidayId, {
+    String? name,
+    String? date,
+    String? description,
+    bool? isActive,
+  }) async {
+    try {
+      final data = <String, dynamic>{};
+      if (name != null) data['name'] = name;
+      if (date != null) data['date'] = date;
+      if (description != null) data['description'] = description;
+      if (isActive != null) data['isActive'] = isActive;
+      final response = await _dio.put('/api/leave/admin/holidays/$holidayId', data: data);
+      return CompanyHolidayModel.fromJson(response.data['holiday']);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to update holiday');
+    }
+  }
+
+  Future<void> adminDeleteHoliday(int holidayId) async {
+    try {
+      await _dio.delete('/api/leave/admin/holidays/$holidayId');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to delete holiday');
+    }
+  }
 }
+

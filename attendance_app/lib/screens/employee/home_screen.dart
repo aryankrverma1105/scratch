@@ -14,7 +14,9 @@ import 'permissions_screen.dart';
 import '../../models/attendance_model.dart';
 import '../../models/user_model.dart';
 import 'profile_screen.dart';
+import 'leave_management_screen.dart';
 import '../admin/admin_employee_attendance_screen.dart';
+import '../admin/admin_leave_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -894,6 +896,74 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
 
+                        // Leave Management System Portal Card (Available for both Employees & Admins)
+                        const SizedBox(height: 20),
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF1E3A8A), Color(0xFF0F172A)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.35)),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black38,
+                                blurRadius: 10,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const LeaveManagementScreen()),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(18),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF3B82F6).withOpacity(0.2),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.beach_access_rounded, color: Color(0xFF60A5FA), size: 26),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  const Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Leave & Holiday Portal',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                        SizedBox(height: 3),
+                                        Text(
+                                          'Earned balance, auto-confirm leaves, 16 holidays & absence history',
+                                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 15),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
                         if (ApiService().currentUser?.isAdmin ?? false) ...[
                           const SizedBox(height: 25),
                           const Text(
@@ -948,6 +1018,55 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ),
                                     ),
                                     Icon(Icons.arrow_forward_ios, color: AppColors.info, size: 14),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.cardDark,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: const Color(0xFF10B981).withOpacity(0.35)),
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const AdminLeaveScreen(),
+                                  ),
+                                );
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: Color(0x3310B981),
+                                      child: Icon(Icons.event_note_rounded, color: Color(0xFF10B981), size: 24),
+                                    ),
+                                    SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Leave Console & Holiday Calendar',
+                                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
+                                          SizedBox(height: 3),
+                                          Text(
+                                            'Team balances, absence corrections, monthly thresholds & 16-holiday configuration',
+                                            style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_forward_ios, color: Color(0xFF10B981), size: 14),
                                   ],
                                 ),
                               ),

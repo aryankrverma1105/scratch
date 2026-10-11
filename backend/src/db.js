@@ -96,6 +96,58 @@ function run(sql, params = []) {
   });
 }
 
+async function withTransaction(callback) {
+  if (isPostgres) {
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      const txDb = {
+        query: (sql, params = []) => {
+          let pIdx = 1;
+          const pgSql = sql.replace(/\?/g, () => `$${pIdx++}`);
+          return client.query(pgSql, params).then((res) => res.rows);
+        },
+        get: (sql, params = []) => {
+          let pIdx = 1;
+          const pgSql = sql.replace(/\?/g, () => `$${pIdx++}`);
+          return client.query(pgSql, params).then((res) => res.rows[0] || null);
+        },
+        run: (sql, params = []) => {
+          let pIdx = 1;
+          let pgSql = sql.replace(/\?/g, () => `$${pIdx++}`);
+          if (/^\s*insert\s+/i.test(pgSql) && !/returning/i.test(pgSql)) {
+            pgSql += ' RETURNING id';
+          }
+          return client.query(pgSql, params).then((res) => ({
+            lastID: res.rows && res.rows[0] ? res.rows[0].id : null,
+            changes: res.rowCount,
+          }));
+        },
+      };
+      const result = await callback(txDb);
+      await client.query('COMMIT');
+      return result;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } else {
+    await run('BEGIN IMMEDIATE');
+    try {
+      const result = await callback({ query, get, run });
+      await run('COMMIT');
+      return result;
+    } catch (err) {
+      try {
+        await run('ROLLBACK');
+      } catch (_) {}
+      throw err;
+    }
+  }
+}
+
 async function initDatabase() {
   const usersTable = isPostgres
     ? `CREATE TABLE IF NOT EXISTS users (
@@ -286,6 +338,159 @@ async function initDatabase() {
         } catch (_) {}
       },
     },
+    {
+      version: 4,
+      name: 'create_leave_management_system',
+      up: async () => {
+        // 1. Add employee joining and exit dates to users
+        try { await run(`ALTER TABLE users ADD COLUMN joining_date TEXT`); } catch (_) {}
+        try { await run(`ALTER TABLE users ADD COLUMN exit_date TEXT`); } catch (_) {}
+
+        const pkDef = isPostgres ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+        const tsDef = isPostgres ? 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' : 'DATETIME DEFAULT CURRENT_TIMESTAMP';
+
+        // 2. Leave Years
+        await run(`
+          CREATE TABLE IF NOT EXISTS leave_years (
+            id ${pkDef},
+            code VARCHAR(20) UNIQUE NOT NULL,
+            start_date VARCHAR(20) NOT NULL,
+            end_date VARCHAR(20) NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            created_at ${tsDef}
+          )
+        `);
+
+        // 3. Company Holidays (16 days annual policy)
+        await run(`
+          CREATE TABLE IF NOT EXISTS company_holidays (
+            id ${pkDef},
+            leave_year VARCHAR(20) NOT NULL,
+            name VARCHAR(150) NOT NULL,
+            date VARCHAR(20) NOT NULL,
+            description TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at ${tsDef},
+            updated_at ${tsDef}
+          )
+        `);
+        try {
+          await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_holidays_yr_date ON company_holidays(leave_year, date)`);
+        } catch (_) {}
+
+        // 4. Leave Balances
+        await run(`
+          CREATE TABLE IF NOT EXISTS leave_balances (
+            id ${pkDef},
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            leave_year VARCHAR(20) NOT NULL,
+            accrued REAL DEFAULT 0,
+            used REAL DEFAULT 0,
+            expired REAL DEFAULT 0,
+            balance REAL DEFAULT 0,
+            updated_at ${tsDef}
+          )
+        `);
+        try {
+          await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_balances_user_yr ON leave_balances(user_id, leave_year)`);
+        } catch (_) {}
+
+        // 5. Leave Accruals (Idempotent 2 days/month)
+        await run(`
+          CREATE TABLE IF NOT EXISTS leave_accruals (
+            id ${pkDef},
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            leave_year VARCHAR(20) NOT NULL,
+            month VARCHAR(10) NOT NULL,
+            days_accrued REAL NOT NULL DEFAULT 2,
+            accrued_at ${tsDef}
+          )
+        `);
+        try {
+          await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_accruals_user_mo ON leave_accruals(user_id, leave_year, month)`);
+        } catch (_) {}
+
+        // 6. Confirmed Leave Records
+        await run(`
+          CREATE TABLE IF NOT EXISTS leave_records (
+            id ${pkDef},
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            leave_year VARCHAR(20) NOT NULL,
+            start_date VARCHAR(20) NOT NULL,
+            end_date VARCHAR(20) NOT NULL,
+            calendar_days INTEGER NOT NULL,
+            working_days INTEGER NOT NULL,
+            days_deducted REAL NOT NULL,
+            reason TEXT,
+            status VARCHAR(50) NOT NULL DEFAULT 'confirmed',
+            cancelled_at ${isPostgres ? 'TIMESTAMP' : 'DATETIME'},
+            cancelled_reason TEXT,
+            created_at ${tsDef},
+            updated_at ${tsDef}
+          )
+        `);
+        try {
+          await run(`CREATE INDEX IF NOT EXISTS idx_leave_user_dates ON leave_records(user_id, start_date, end_date)`);
+        } catch (_) {}
+
+        // 7. Attendance Absences (Daily Reconciliation)
+        await run(`
+          CREATE TABLE IF NOT EXISTS attendance_absences (
+            id ${pkDef},
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            date VARCHAR(20) NOT NULL,
+            leave_year VARCHAR(20) NOT NULL,
+            month VARCHAR(10) NOT NULL,
+            absence_type VARCHAR(50) NOT NULL,
+            reason TEXT,
+            is_corrected INTEGER DEFAULT 0,
+            corrected_by INTEGER REFERENCES users(id),
+            correction_notes TEXT,
+            created_at ${tsDef},
+            updated_at ${tsDef}
+          )
+        `);
+        try {
+          await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_absences_user_date ON attendance_absences(user_id, date)`);
+        } catch (_) {}
+
+        // 8. Monthly Attendance Summaries (Threshold > 2 missing days)
+        await run(`
+          CREATE TABLE IF NOT EXISTS monthly_attendance_summaries (
+            id ${pkDef},
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            leave_year VARCHAR(20) NOT NULL,
+            month VARCHAR(10) NOT NULL,
+            missing_attendance_count INTEGER DEFAULT 0,
+            earned_leaves_accrued REAL DEFAULT 0,
+            earned_leaves_used REAL DEFAULT 0,
+            automatic_absence_count INTEGER DEFAULT 0,
+            unpaid_absence_count INTEGER DEFAULT 0,
+            remaining_earned_balance REAL DEFAULT 0,
+            threshold_exceeded INTEGER DEFAULT 0,
+            updated_at ${tsDef}
+          )
+        `);
+        try {
+          await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_summaries_user_mo ON monthly_attendance_summaries(user_id, month)`);
+        } catch (_) {}
+
+        // 9. Leave Audit Logs
+        await run(`
+          CREATE TABLE IF NOT EXISTS leave_audit_logs (
+            id ${pkDef},
+            user_id INTEGER REFERENCES users(id),
+            action VARCHAR(50) NOT NULL,
+            details TEXT,
+            performed_by INTEGER REFERENCES users(id),
+            created_at ${tsDef}
+          )
+        `);
+        try {
+          await run(`CREATE INDEX IF NOT EXISTS idx_audit_user_act ON leave_audit_logs(user_id, action)`);
+        } catch (_) {}
+      },
+    },
   ];
 
   for (const m of migrations) {
@@ -332,5 +537,6 @@ module.exports = {
   query,
   get,
   run,
+  withTransaction,
   initDatabase,
 };

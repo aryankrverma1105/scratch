@@ -10,6 +10,7 @@ const adminRoutes = require('./src/routes/adminRoutes');
 const attendanceRoutes = require('./src/routes/attendanceRoutes');
 const locationRoutes = require('./src/routes/locationRoutes');
 const fileRoutes = require('./src/routes/fileRoutes');
+const leaveRoutes = require('./src/routes/leaveRoutes');
 
 const app = express();
 
@@ -51,6 +52,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/files', fileRoutes); // Authenticated selfies
+app.use('/api/leave', leaveRoutes); // Leave Management System
 
 // 404 handler
 app.use((req, res) => {
@@ -74,9 +76,11 @@ async function start() {
     const { initFcm } = require('./src/services/fcmService');
     const { startWatchdog } = require('./src/services/watchdog');
     const { initAutoCheckoutCron } = require('./src/services/autoCheckout');
+    const { initLeaveCronJobs } = require('./src/services/leaveCron');
     initFcm();
     startWatchdog();
     initAutoCheckoutCron();
+    initLeaveCronJobs();
 
     const bindHost = process.env.HOST || '0.0.0.0';
     const server = app.listen(config.PORT, bindHost, () => {
