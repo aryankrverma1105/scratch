@@ -148,7 +148,11 @@ async function withTransaction(callback) {
   }
 }
 
-async function initDatabase() {
+let initDbPromise = null;
+
+function initDatabase() {
+  if (initDbPromise) return initDbPromise;
+  initDbPromise = (async () => {
   const usersTable = isPostgres
     ? `CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -497,8 +501,18 @@ async function initDatabase() {
     const applied = await get('SELECT version FROM schema_migrations WHERE version = ?', [m.version]);
     if (!applied) {
       await m.up();
-      await run('INSERT INTO schema_migrations (version, name) VALUES (?, ?)', [m.version, m.name]);
-      console.log(` Migration v${m.version} applied: ${m.name}`);
+      try {
+        if (isPostgres) {
+          await run('INSERT INTO schema_migrations (version, name) VALUES ($1, $2) ON CONFLICT (version) DO NOTHING', [m.version, m.name]);
+        } else {
+          await run('INSERT OR IGNORE INTO schema_migrations (version, name) VALUES (?, ?)', [m.version, m.name]);
+        }
+        console.log(` Migration v${m.version} applied: ${m.name}`);
+      } catch (insertErr) {
+        if (!insertErr.message?.includes('UNIQUE') && !insertErr.message?.includes('duplicate key')) {
+          throw insertErr;
+        }
+      }
     }
   }
 
@@ -509,27 +523,39 @@ async function initDatabase() {
     const randomPassword = process.env.ADMIN_INITIAL_PASSWORD || crypto.randomBytes(8).toString('hex');
     const salt = await bcrypt.genSalt(10);
     const hash = await bcrypt.hash(randomPassword, salt);
-    await run(
-      `INSERT INTO users (email, username, password_hash, full_name, role, department, is_active, must_change_password)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        config.ADMIN_DEFAULT_EMAIL,
-        'admin',
-        hash,
-        config.ADMIN_DEFAULT_NAME,
-        'admin',
-        'Management',
-        1,
-        1,
-      ]
-    );
-    console.log(`=======================================================`);
-    console.log(`🔐 FIRST-RUN ADMIN CREATED:`);
-    console.log(`   Email:    ${config.ADMIN_DEFAULT_EMAIL}`);
-    console.log(`   Password: ${randomPassword}`);
-    console.log(`   (Password change required on first login)`);
-    console.log(`=======================================================`);
+    try {
+      await run(
+        `INSERT INTO users (email, username, password_hash, full_name, role, department, is_active, must_change_password)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          config.ADMIN_DEFAULT_EMAIL,
+          'admin',
+          hash,
+          config.ADMIN_DEFAULT_NAME,
+          'admin',
+          'Management',
+          1,
+          1,
+        ]
+      );
+      console.log(`=======================================================`);
+      console.log(`🔐 FIRST-RUN ADMIN CREATED:`);
+      console.log(`   Email:    ${config.ADMIN_DEFAULT_EMAIL}`);
+      console.log(`   Password: ${randomPassword}`);
+      console.log(`   (Password change required on first login)`);
+      console.log(`=======================================================`);
+    } catch (adminErr) {
+      if (!adminErr.message?.includes('UNIQUE') && !adminErr.message?.includes('duplicate key')) {
+        throw adminErr;
+      }
+    }
   }
+  })();
+
+  return initDbPromise.catch((err) => {
+    initDbPromise = null;
+    throw err;
+  });
 }
 
 module.exports = {
