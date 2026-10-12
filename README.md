@@ -3,7 +3,7 @@
 > **Designed and developed by Aryan Kumar Verma**  
 > *Sologix Energy – Energizing Naturally*
 
-A production-grade, enterprise Employee Attendance Android Mobile Application (Flutter) and REST API Backend (Node.js/Express) built with dark UI styling matching [tilakpatel22/employee-attendance-app-flutter](https://github.com/tilakpatel22/employee-attendance-app-flutter.git).
+A production-grade, enterprise Employee Attendance Android Mobile Application (Flutter) and REST API Backend (Node.js/Express) built with dark UI styling. 
 
 ---
 
