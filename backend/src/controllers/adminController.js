@@ -3,6 +3,7 @@ const db = require('../db');
 const config = require('../config');
 const { getCompanyDate, getDayRangeUtc } = require('../utils/timeUtils');
 const { logActivity } = require('../services/activityLogger');
+const salaryService = require('../services/salaryService');
 
 function isRootSuperAdmin(user) {
   if (!user) return false;
@@ -30,7 +31,23 @@ async function listUsers(req, res) {
 // Create employee or admin
 async function createUser(req, res) {
   try {
-    const { email, username, password, full_name, role, department, phone } = req.body;
+    const {
+      email,
+      username,
+      password,
+      full_name,
+      role,
+      department,
+      phone,
+      salaryType,
+      salary_type,
+      monthlyBasicSalary,
+      monthly_basic_salary,
+      dailyWageOverride,
+      daily_wage_override,
+      dailyIncentiveRate,
+      daily_incentive_rate,
+    } = req.body;
 
     if (!email || !password || !full_name) {
       return res.status(400).json({ error: 'Email, password, and full name are required' });
@@ -57,6 +74,27 @@ async function createUser(req, res) {
       [email, username || null, hash, full_name, assignedRole, department || 'General', phone || '', 1]
     );
 
+    const sType = salaryType || salary_type;
+    const mBasic = monthlyBasicSalary ?? monthly_basic_salary ?? 0;
+    const dOverride = dailyWageOverride ?? daily_wage_override ?? null;
+    const dIncentive = dailyIncentiveRate ?? daily_incentive_rate ?? 0;
+
+    if (sType) {
+      try {
+        await salaryService.upsertEmployeeSalaryConfig({
+          userId: result.lastID,
+          salaryType: sType,
+          monthlyBasicSalary: mBasic,
+          dailyWageOverride: dOverride,
+          dailyIncentiveRate: dIncentive,
+          effectiveDate: getCompanyDate(),
+          createdBy: req.user?.id || 1,
+        });
+      } catch (salErr) {
+        console.warn('Salary config on user creation warning:', salErr.message);
+      }
+    }
+
     const newUser = await db.get(
       'SELECT id, email, username, full_name, role, department, phone, is_active, created_at FROM users WHERE id = ?',
       [result.lastID]
@@ -67,7 +105,9 @@ async function createUser(req, res) {
       action: 'USER_CREATED',
       entityType: 'user',
       entityId: result.lastID,
-      details: `Created new ${assignedRole} account: ${full_name} (${email})`,
+      targetUserId: result.lastID,
+      targetUserName: full_name,
+      details: `Created new ${assignedRole} account: ${full_name} (${email})${sType ? ` with ${sType === 'fixed_monthly' ? `Fixed Monthly (₹${mBasic})` : `Daily Wages (Override: ${dOverride ? `₹${dOverride}` : 'Common rate'}, Fixed Incentive: ₹${dIncentive}/day)`}` : ''}`,
     });
 
     return res.status(201).json({
@@ -170,6 +210,8 @@ async function updateUser(req, res) {
       action: 'USER_UPDATED',
       entityType: 'user',
       entityId: userId,
+      targetUserId: userId,
+      targetUserName: targetUser.full_name,
       details: `Updated user account: ${targetUser.full_name} (${targetUser.email})`,
     });
 
@@ -220,6 +262,8 @@ async function deleteUser(req, res) {
       action: 'USER_DELETED',
       entityType: 'user',
       entityId: userId,
+      targetUserId: userId,
+      targetUserName: targetUser.full_name,
       details: `Deleted user: ${targetUser.full_name} (${targetUser.email}, role: ${targetUser.role})`,
     });
 

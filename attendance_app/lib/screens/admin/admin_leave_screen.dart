@@ -277,6 +277,57 @@ class _AdminLeaveScreenState extends State<AdminLeaveScreen> with SingleTickerPr
     );
   }
 
+  void _confirmResetLeaveBalancesDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.restart_alt, color: Colors.orange, size: 24),
+            SizedBox(width: 8),
+            Text('Reset Leave Balances', style: TextStyle(color: Colors.white, fontSize: 17)),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to reset all employee leave balances to 0 for production launch starting from November?\n\n• Prior test leave records will be cleared.\n• Every active employee starts with 0 leaves.\n• The annual leave cycle will continue every year from 1 April to 31 March.',
+          style: TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white70))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.black),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() => _isLoading = true);
+              try {
+                await ApiService().adminResetLeaveBalances();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      backgroundColor: AppColors.success,
+                      content: Text('All leave balances have been reset to 0 starting from November!'),
+                    ),
+                  );
+                }
+                _loadAllAdminData();
+              } catch (e) {
+                if (mounted) {
+                  setState(() => _isLoading = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(backgroundColor: AppColors.error, content: Text('Reset failed: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Confirm Reset', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filteredSummaries = _teamSummaries.where((u) {
@@ -319,9 +370,18 @@ class _AdminLeaveScreenState extends State<AdminLeaveScreen> with SingleTickerPr
                         ),
                       ],
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh, color: Colors.white70),
-                      onPressed: _loadAllAdminData,
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.restart_alt, color: Colors.orangeAccent),
+                          tooltip: 'Reset Balances for November Launch',
+                          onPressed: _confirmResetLeaveBalancesDialog,
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.refresh, color: Colors.white70),
+                          onPressed: _loadAllAdminData,
+                        ),
+                      ],
                     ),
                   ],
                 ),

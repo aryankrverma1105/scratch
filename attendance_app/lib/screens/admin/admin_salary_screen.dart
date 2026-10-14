@@ -727,7 +727,7 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
                       const SizedBox(height: 6),
                       Text(
                         isDaily
-                            ? (c.dailyWageOverride != null ? 'Daily Wage (Override: ₹${c.dailyWageOverride})' : 'Daily Wage (Common: ₹${_settings?.commonDailyWage ?? 650})')
+                            ? '${c.dailyWageOverride != null ? 'Daily Wage (Override: ₹${c.dailyWageOverride})' : 'Daily Wage (Common: ₹${_settings?.commonDailyWage ?? 650})'}${c.dailyIncentiveRate > 0 ? ' • Inc: ₹${c.dailyIncentiveRate.toStringAsFixed(0)}/day' : ''}'
                             : 'Fixed Monthly: ₹${NumberFormat('#,##,##0').format(c.monthlyBasicSalary)}',
                         style: TextStyle(
                           color: isDaily ? Colors.amber : Colors.cyan,
@@ -754,6 +754,7 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
     String selectedType = c.salaryType;
     final monthlyController = TextEditingController(text: c.monthlyBasicSalary > 0 ? c.monthlyBasicSalary.toStringAsFixed(0) : '');
     final overrideController = TextEditingController(text: c.dailyWageOverride != null ? c.dailyWageOverride!.toStringAsFixed(0) : '');
+    final incentiveController = TextEditingController(text: c.dailyIncentiveRate > 0 ? c.dailyIncentiveRate.toStringAsFixed(0) : '');
     final remarksController = TextEditingController(text: c.remarks ?? '');
 
     showDialog(
@@ -824,6 +825,21 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  const Text('Fixed Daily Incentive (₹/day)', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: incentiveController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'e.g. 100/day for present days',
+                      hintStyle: const TextStyle(color: AppColors.textMuted),
+                      filled: true,
+                      fillColor: AppColors.inputDark,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 14),
                 const Text('Remarks', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
@@ -853,6 +869,8 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
                     salaryType: selectedType,
                     monthlyBasicSalary: double.tryParse(monthlyController.text.trim()) ?? 0.0,
                     dailyWageOverride: overrideController.text.trim().isNotEmpty ? double.tryParse(overrideController.text.trim()) : null,
+                    dailyIncentiveRate: incentiveController.text.trim().isNotEmpty ? double.tryParse(incentiveController.text.trim()) : 0.0,
+                    effectiveDate: DateTime.now().toIso8601String().substring(0, 10),
                     remarks: remarksController.text.trim(),
                   );
                   if (mounted) {

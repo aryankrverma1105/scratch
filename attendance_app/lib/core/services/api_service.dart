@@ -429,6 +429,10 @@ class ApiService {
     String? username,
     String? department,
     String? phone,
+    String? salaryType,
+    double? monthlyBasicSalary,
+    double? dailyWageOverride,
+    double? dailyIncentiveRate,
   }) async {
     try {
       final data = <String, dynamic>{
@@ -445,6 +449,18 @@ class ApiService {
       }
       if (phone != null && phone.trim().isNotEmpty) {
         data['phone'] = phone.trim();
+      }
+      if (salaryType != null) {
+        data['salaryType'] = salaryType;
+      }
+      if (monthlyBasicSalary != null) {
+        data['monthlyBasicSalary'] = monthlyBasicSalary;
+      }
+      if (dailyWageOverride != null) {
+        data['dailyWageOverride'] = dailyWageOverride;
+      }
+      if (dailyIncentiveRate != null) {
+        data['dailyIncentiveRate'] = dailyIncentiveRate;
       }
       final response = await _dio.post('/api/admin/users', data: data);
       return UserModel.fromJson(response.data['user']);
@@ -803,21 +819,35 @@ class ApiService {
     required String salaryType,
     double? monthlyBasicSalary,
     double? dailyWageOverride,
+    double? dailyIncentiveRate,
     String? effectiveDate,
     String? remarks,
   }) async {
     try {
+      final nowStr = DateTime.now().toIso8601String().substring(0, 10);
       final response = await _dio.post('/api/salary/admin/configs', data: {
         'userId': userId,
         'salaryType': salaryType,
         'monthlyBasicSalary': monthlyBasicSalary ?? 0.0,
         'dailyWageOverride': dailyWageOverride,
-        'effectiveDate': effectiveDate,
+        'dailyIncentiveRate': dailyIncentiveRate ?? 0.0,
+        'effectiveDate': (effectiveDate != null && effectiveDate.isNotEmpty) ? effectiveDate : nowStr,
         'remarks': remarks,
       });
       return EmployeeSalaryConfigModel.fromJson(response.data['config']);
     } on DioException catch (e) {
       throw Exception(e.response?.data?['error'] ?? 'Failed to save salary config');
+    }
+  }
+
+  Future<Map<String, dynamic>> adminResetLeaveBalances({String? leaveYear}) async {
+    try {
+      final data = <String, dynamic>{};
+      if (leaveYear != null) data['leaveYear'] = leaveYear;
+      final response = await _dio.post('/api/leave/admin/reset-balances', data: data);
+      return response.data;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to reset leave balances');
     }
   }
 

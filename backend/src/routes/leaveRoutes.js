@@ -25,5 +25,6 @@ router.put('/admin/holidays/:id', requireAdmin, leaveController.adminUpdateHolid
 router.delete('/admin/holidays/:id', requireAdmin, leaveController.adminDeleteHoliday);
 router.post('/admin/reconcile', requireAdmin, leaveController.adminTriggerReconciliation);
 router.post('/admin/accrue', requireAdmin, leaveController.adminTriggerAccrual);
+router.post('/admin/reset-balances', requireAdmin, leaveController.adminResetLeaveBalances);
 
 module.exports = router;

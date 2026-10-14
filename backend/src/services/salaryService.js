@@ -86,13 +86,15 @@ async function upsertEmployeeSalaryConfig({
   salaryType,
   monthlyBasicSalary = 0,
   dailyWageOverride = null,
+  dailyIncentiveRate = 0,
   effectiveDate,
   remarks,
   createdBy,
 }) {
-  if (!['daily_wage', 'fixed_monthly'].includes(salaryType)) {
+  if (!salaryType || !['daily_wage', 'daily_wages', 'fixed_monthly'].includes(salaryType)) {
     throw new Error("Invalid salary type. Must be 'daily_wage' or 'fixed_monthly'");
   }
+  const normSalaryType = salaryType === 'daily_wages' ? 'daily_wage' : salaryType;
   if (!effectiveDate) {
     effectiveDate = getCompanyDate();
   }
@@ -109,14 +111,17 @@ async function upsertEmployeeSalaryConfig({
     await db.run(
       `UPDATE employee_salary_configs
        SET salary_type = ?, monthly_basic_salary = ?, daily_wage_override = ?,
-           effective_date = ?, remarks = ?, created_by = ?, updated_at = ?
+           daily_incentive_rate = ?, effective_date = ?, remarks = ?, created_by = ?, updated_at = ?
        WHERE user_id = ?`,
       [
-        salaryType,
+        normSalaryType,
         parseFloat(monthlyBasicSalary) || 0,
         dailyWageOverride !== null && dailyWageOverride !== undefined && dailyWageOverride !== ''
           ? parseFloat(dailyWageOverride)
           : null,
+        dailyIncentiveRate !== null && dailyIncentiveRate !== undefined && dailyIncentiveRate !== ''
+          ? parseFloat(dailyIncentiveRate)
+          : 0,
         effectiveDate,
         remarks || null,
         createdBy,
@@ -126,15 +131,18 @@ async function upsertEmployeeSalaryConfig({
     );
   } else {
     await db.run(
-      `INSERT INTO employee_salary_configs (user_id, salary_type, monthly_basic_salary, daily_wage_override, effective_date, remarks, created_by, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO employee_salary_configs (user_id, salary_type, monthly_basic_salary, daily_wage_override, daily_incentive_rate, effective_date, remarks, created_by, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
-        salaryType,
+        normSalaryType,
         parseFloat(monthlyBasicSalary) || 0,
         dailyWageOverride !== null && dailyWageOverride !== undefined && dailyWageOverride !== ''
           ? parseFloat(dailyWageOverride)
           : null,
+        dailyIncentiveRate !== null && dailyIncentiveRate !== undefined && dailyIncentiveRate !== ''
+          ? parseFloat(dailyIncentiveRate)
+          : 0,
         effectiveDate,
         remarks || null,
         createdBy,
@@ -247,6 +255,7 @@ async function getAttendanceMetricsForMonth(userId, monthStr) {
     totalWorkingDays, // total possible working days in month (standard calendar)
     activeWorkingDays: activeWorkingDates.length,
     presentDays: presentDaysCount,
+    presentDates: Array.from(presentDates),
     paidLeaveDays: paidLeaveDaysCount,
     payableDays,
     absentDays: absentDaysCount,
@@ -275,6 +284,38 @@ async function calculateSalaryForEmployee(userId, monthStr) {
   }
 
   const attendanceMetrics = await getAttendanceMetricsForMonth(userId, monthStr);
+
+  // If daily_incentive_rate is fixed by admin (> 0), ensure daily incentive records exist for present attendance days
+  const dailyIncentiveRate = parseFloat(empConfig.daily_incentive_rate || 0);
+  if (empConfig.salary_type === 'daily_wage' && dailyIncentiveRate > 0) {
+    const existingIncentives = await db.query(
+      `SELECT date FROM daily_incentives WHERE user_id = ? AND date LIKE ?`,
+      [userId, `${monthStr}%`]
+    );
+    const existingSet = new Set(existingIncentives.map((r) => r.date));
+    const nowIso = new Date().toISOString();
+
+    for (const dt of attendanceMetrics.presentDates || []) {
+      if (!existingSet.has(dt)) {
+        await db.run(
+          `INSERT INTO daily_incentives (user_id, date, amount, description, status, payroll_period, created_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,
+            dt,
+            dailyIncentiveRate,
+            'Daily Fixed Incentive',
+            'approved',
+            monthStr,
+            empConfig.created_by || 1,
+            nowIso,
+            nowIso,
+          ]
+        );
+        existingSet.add(dt);
+      }
+    }
+  }
 
   // Fetch approved daily incentives in this month
   const incentives = await db.query(

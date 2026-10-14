@@ -648,6 +648,51 @@ function initDatabase() {
         } catch (_) {}
       },
     },
+    {
+      version: 6,
+      name: 'create_salary_enhancements_and_reset_leave_balances',
+      up: async () => {
+        // 1. Add daily_incentive_rate to employee_salary_configs
+        try {
+          await run(`ALTER TABLE employee_salary_configs ADD COLUMN daily_incentive_rate REAL DEFAULT 0`);
+        } catch (_) {}
+
+        // 2. Add target_user_id and target_user_name to activity_logs
+        try {
+          await run(`ALTER TABLE activity_logs ADD COLUMN target_user_id INTEGER`);
+        } catch (_) {}
+        try {
+          await run(`ALTER TABLE activity_logs ADD COLUMN target_user_name VARCHAR(255)`);
+        } catch (_) {}
+
+        // 3. Reset leave balances & records for production launch starting November
+        try {
+          await run(`DELETE FROM leave_balances`);
+          await run(`DELETE FROM leave_records`);
+          await run(`DELETE FROM leave_accruals`);
+          await run(`DELETE FROM attendance_absences`);
+          await run(`DELETE FROM monthly_attendance_summaries`);
+
+          // Ensure active leave year 2026-2027 (runs 1 April 2026 to 31 March 2027)
+          await run(
+            `INSERT OR IGNORE INTO leave_years (code, start_date, end_date, is_active)
+             VALUES ('2026-2027', '2026-04-01', '2027-03-31', 1)`
+          );
+
+          // Initialize fresh 0 balance for all existing users
+          const users = await query(`SELECT id FROM users`);
+          for (const u of users) {
+            await run(
+              `INSERT INTO leave_balances (user_id, leave_year, accrued, used, expired, balance)
+               VALUES (?, '2026-2027', 0, 0, 0, 0)`,
+              [u.id]
+            );
+          }
+        } catch (resetErr) {
+          console.warn('Leave balance reset warning:', resetErr.message);
+        }
+      },
+    },
   ];
 
   for (const m of migrations) {

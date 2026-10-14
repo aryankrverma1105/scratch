@@ -26,6 +26,7 @@ class EmployeeSalaryConfigModel {
   final String salaryType; // 'daily_wage' | 'fixed_monthly'
   final double monthlyBasicSalary;
   final double? dailyWageOverride;
+  final double dailyIncentiveRate;
   final String? effectiveDate;
   final String? remarks;
 
@@ -38,6 +39,7 @@ class EmployeeSalaryConfigModel {
     required this.salaryType,
     required this.monthlyBasicSalary,
     this.dailyWageOverride,
+    this.dailyIncentiveRate = 0.0,
     this.effectiveDate,
     this.remarks,
   });
@@ -58,6 +60,9 @@ class EmployeeSalaryConfigModel {
               ? (json['daily_wage_override'] as num).toDouble()
               : double.tryParse(json['daily_wage_override'].toString()))
           : null,
+      dailyIncentiveRate: (json['daily_incentive_rate'] is num)
+          ? (json['daily_incentive_rate'] as num).toDouble()
+          : double.tryParse(json['daily_incentive_rate']?.toString() ?? '0') ?? 0.0,
       effectiveDate: json['effective_date']?.toString(),
       remarks: json['remarks']?.toString(),
     );
@@ -287,6 +292,8 @@ class ActivityLogModel {
   final String? entityId;
   final String? details;
   final String? ipAddress;
+  final int? targetUserId;
+  final String? targetUserName;
   final DateTime createdAt;
 
   ActivityLogModel({
@@ -299,6 +306,8 @@ class ActivityLogModel {
     this.entityId,
     this.details,
     this.ipAddress,
+    this.targetUserId,
+    this.targetUserName,
     required this.createdAt,
   });
 
@@ -320,6 +329,10 @@ class ActivityLogModel {
       entityId: json['entity_id']?.toString(),
       details: json['details']?.toString(),
       ipAddress: json['ip_address']?.toString(),
+      targetUserId: json['target_user_id'] is int
+          ? json['target_user_id']
+          : int.tryParse(json['target_user_id']?.toString() ?? '0'),
+      targetUserName: json['target_user_name']?.toString(),
       createdAt: parseDt(json['created_at']),
     );
   }

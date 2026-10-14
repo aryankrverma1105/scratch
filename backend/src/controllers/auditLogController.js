@@ -11,21 +11,29 @@ async function getActivityLogs(req, res) {
     const { action, entityType } = req.query;
 
     let countSql = 'SELECT COUNT(*) as total FROM activity_logs WHERE 1=1';
-    let dataSql = 'SELECT * FROM activity_logs WHERE 1=1';
+    let dataSql = `
+      SELECT a.*,
+             COALESCE(a.target_user_name, tu.full_name) as target_user_name,
+             COALESCE(a.user_name, au.full_name) as user_name
+      FROM activity_logs a
+      LEFT JOIN users tu ON a.target_user_id = tu.id
+      LEFT JOIN users au ON a.user_id = au.id
+      WHERE 1=1
+    `;
     const params = [];
 
     if (action) {
-      countSql += ' AND action = ?';
-      dataSql += ' AND action = ?';
+      countSql += ' AND a.action = ?';
+      dataSql += ' AND a.action = ?';
       params.push(action);
     }
     if (entityType) {
-      countSql += ' AND entity_type = ?';
-      dataSql += ' AND entity_type = ?';
+      countSql += ' AND a.entity_type = ?';
+      dataSql += ' AND a.entity_type = ?';
       params.push(entityType);
     }
 
-    dataSql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    dataSql += ' ORDER BY a.created_at DESC LIMIT ? OFFSET ?';
     const totalRow = await db.get(countSql, params);
     const total = totalRow?.total || 0;
 

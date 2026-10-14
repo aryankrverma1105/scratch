@@ -250,63 +250,111 @@ class _AdminAuditLogsScreenState extends State<AdminAuditLogsScreen> {
             decoration: BoxDecoration(
               color: AppColors.cardDark,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: actionColor.withOpacity(0.2)),
+              border: Border.all(color: actionColor.withOpacity(0.3), width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
-            child: Row(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: actionColor.withOpacity(0.15),
-                  child: Icon(actionIcon, color: actionColor, size: 20),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                // Header: Action badge & Timestamp
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: actionColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: actionColor.withOpacity(0.4)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Expanded(
-                            child: Text(
-                              log.action.replaceAll('_', ' '),
-                              style: TextStyle(
-                                color: actionColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
+                          Icon(actionIcon, color: actionColor, size: 14),
+                          const SizedBox(width: 6),
+                          Text(
+                            log.action.replaceAll('_', ' '),
+                            style: TextStyle(
+                              color: actionColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11.5,
+                              letterSpacing: 0.5,
                             ),
                           ),
-                          Text(
-                            timeStr,
-                            style: const TextStyle(color: AppColors.textMuted, fontSize: 10.5),
-                          ),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        log.details ?? 'No details recorded',
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
-                      ),
-                      const SizedBox(height: 8),
+                    ),
+                    const Spacer(),
+                    Text(
+                      timeStr,
+                      style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // WHO & OF WHOM Section
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.background.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Column(
+                    children: [
                       Row(
                         children: [
-                          Icon(Icons.account_circle_outlined, size: 14, color: Colors.white.withOpacity(0.5)),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Performed by: ${log.userName} (${log.role.toUpperCase()})',
-                            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 11),
+                          const Icon(Icons.person_pin_outlined, size: 16, color: AppColors.info),
+                          const SizedBox(width: 8),
+                          const Text('By (Actor): ', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                          Expanded(
+                            child: Text(
+                              '${log.userName} (${log.role.toUpperCase()})',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12.5),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          if (log.ipAddress != null && log.ipAddress != 'system') ...[
-                            const SizedBox(width: 8),
-                            Text('• IP: ${log.ipAddress}', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10.5)),
-                          ],
                         ],
                       ),
+                      if (log.targetUserName != null && log.targetUserName!.isNotEmpty) ...[
+                        const Divider(color: Colors.white10, height: 12),
+                        Row(
+                          children: [
+                            const Icon(Icons.arrow_forward, size: 14, color: AppColors.warning),
+                            const SizedBox(width: 8),
+                            const Text('For (Target): ', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                            Expanded(
+                              child: Text(
+                                log.targetUserName!,
+                                style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 12.5),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
+                const SizedBox(height: 10),
+
+                // Activity Details
+                Text(
+                  log.details ?? 'No details recorded',
+                  style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.35),
+                ),
+                if (log.ipAddress != null && log.ipAddress != 'system') ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'IP: ${log.ipAddress}',
+                    style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 10.5),
+                  ),
+                ],
               ],
             ),
           );

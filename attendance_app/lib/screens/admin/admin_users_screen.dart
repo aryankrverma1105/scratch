@@ -403,7 +403,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     final usernameController = TextEditingController();
     final deptController = TextEditingController(text: 'Engineering');
     final passwordController = TextEditingController();
+    final monthlySalaryController = TextEditingController();
+    final dailyOverrideController = TextEditingController();
+    final dailyIncentiveController = TextEditingController();
     String selectedRole = 'employee';
+    String selectedSalaryType = 'daily_wage';
     bool isSubmitting = false;
     String? modalError;
 
@@ -554,6 +558,95 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                // Salary & Compensation Configuration
+                const Text('Salary & Compensation *', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Daily Wages')),
+                        selected: selectedSalaryType == 'daily_wage',
+                        selectedColor: AppColors.info,
+                        backgroundColor: AppColors.inputDark,
+                        labelStyle: TextStyle(color: selectedSalaryType == 'daily_wage' ? Colors.white : AppColors.textMuted),
+                        onSelected: (val) {
+                          if (val) setModalState(() => selectedSalaryType = 'daily_wage');
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Center(child: Text('Fixed Monthly')),
+                        selected: selectedSalaryType == 'fixed_monthly',
+                        selectedColor: AppColors.info,
+                        backgroundColor: AppColors.inputDark,
+                        labelStyle: TextStyle(color: selectedSalaryType == 'fixed_monthly' ? Colors.white : AppColors.textMuted),
+                        onSelected: (val) {
+                          if (val) setModalState(() => selectedSalaryType = 'fixed_monthly');
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (selectedSalaryType == 'fixed_monthly') ...[
+                  TextField(
+                    controller: monthlySalaryController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Monthly Basic Salary (₹) *',
+                      labelStyle: const TextStyle(color: AppColors.textMuted),
+                      hintText: 'e.g. 26000',
+                      hintStyle: const TextStyle(color: AppColors.textMuted),
+                      filled: true,
+                      fillColor: AppColors.inputDark,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                  ),
+                ] else ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: dailyOverrideController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: 'Daily Wage (₹)',
+                            labelStyle: const TextStyle(color: AppColors.textMuted),
+                            hintText: 'Common if empty',
+                            hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                            filled: true,
+                            fillColor: AppColors.inputDark,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: dailyIncentiveController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: 'Fixed Incentive (₹)',
+                            labelStyle: const TextStyle(color: AppColors.textMuted),
+                            hintText: 'e.g. 100/day',
+                            hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                            filled: true,
+                            fillColor: AppColors.inputDark,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 16),
+
                 // In-modal Error Display
                 if (modalError != null) ...[
                   Container(
@@ -619,6 +712,10 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                                 department: deptController.text.trim(),
                                 role: selectedRole,
                                 password: pass,
+                                salaryType: selectedSalaryType,
+                                monthlyBasicSalary: double.tryParse(monthlySalaryController.text.trim()) ?? 0.0,
+                                dailyWageOverride: dailyOverrideController.text.trim().isNotEmpty ? double.tryParse(dailyOverrideController.text.trim()) : null,
+                                dailyIncentiveRate: dailyIncentiveController.text.trim().isNotEmpty ? double.tryParse(dailyIncentiveController.text.trim()) : 0.0,
                               );
                               if (mounted) {
                                 Navigator.pop(ctx);

@@ -353,6 +353,50 @@ async function adminTriggerAccrual(req, res) {
   }
 }
 
+// Admin: Reset all leave balances for launch starting from November
+async function adminResetLeaveBalances(req, res) {
+  try {
+    const leaveYear = req.body?.leaveYear || '2026-2027';
+    await db.run('DELETE FROM leave_balances');
+    await db.run('DELETE FROM leave_records');
+    await db.run('DELETE FROM leave_accruals');
+    await db.run('DELETE FROM attendance_absences');
+    await db.run('DELETE FROM monthly_attendance_summaries');
+
+    const parts = leaveYear.split('-');
+    await db.run(
+      `INSERT OR IGNORE INTO leave_years (code, start_date, end_date, is_active)
+       VALUES (?, ?, ?, 1)`,
+      [leaveYear, `${parts[0]}-04-01`, `${parts[1]}-03-31`]
+    );
+
+    const users = await db.query('SELECT id FROM users');
+    for (const u of users) {
+      await db.run(
+        `INSERT INTO leave_balances (user_id, leave_year, accrued, used, expired, balance)
+         VALUES (?, ?, 0, 0, 0, 0)`,
+        [u.id, leaveYear]
+      );
+    }
+
+    const { logActivity } = require('../services/activityLogger');
+    await logActivity({
+      req,
+      action: 'LEAVE_BALANCES_RESET',
+      entityType: 'leave_system',
+      details: `Reset all leave balances and records to 0 for production launch starting from November (Leave Year: ${leaveYear})`,
+    });
+
+    return res.json({
+      success: true,
+      message: `All leave balances reset to 0 for launch starting from November (Leave Year: ${leaveYear})`,
+      usersReset: users.length,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
 module.exports = {
   getMyLeaveBalance,
   getMyLeaveSummary,
@@ -370,4 +414,5 @@ module.exports = {
   adminDeleteHoliday,
   adminTriggerReconciliation,
   adminTriggerAccrual,
+  adminResetLeaveBalances,
 };

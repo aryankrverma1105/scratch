@@ -11,11 +11,12 @@ const updateSettingsSchema = z.object({
 
 const saveConfigSchema = z.object({
   userId: z.number().int().positive(),
-  salaryType: z.enum(['daily_wage', 'fixed_monthly']),
-  monthlyBasicSalary: z.number().nonnegative().optional(),
+  salaryType: z.enum(['daily_wage', 'daily_wages', 'fixed_monthly']),
+  monthlyBasicSalary: z.number().nonnegative().nullable().optional(),
   dailyWageOverride: z.number().nonnegative().nullable().optional(),
-  effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  remarks: z.string().optional(),
+  dailyIncentiveRate: z.number().nonnegative().nullable().optional(),
+  effectiveDate: z.string().nullable().optional().or(z.literal('')),
+  remarks: z.string().nullable().optional(),
 });
 
 const incentiveSchema = z.object({
@@ -68,7 +69,7 @@ async function listEmployeeConfigs(req, res) {
     const configs = await db.query(
       `SELECT u.id as user_id, u.full_name, u.email, u.role, u.department, u.is_active,
               sc.id as config_id, sc.salary_type, sc.monthly_basic_salary, sc.daily_wage_override,
-              sc.effective_date, sc.remarks
+              sc.daily_incentive_rate, sc.effective_date, sc.remarks
        FROM users u
        LEFT JOIN employee_salary_configs sc ON u.id = sc.user_id
        ORDER BY u.id ASC`
@@ -93,22 +94,29 @@ async function getEmployeeConfig(req, res) {
 async function saveEmployeeConfig(req, res) {
   try {
     const data = saveConfigSchema.parse(req.body);
+    const effDate = data.effectiveDate || getCompanyDate();
     const config = await salaryService.upsertEmployeeSalaryConfig({
       userId: data.userId,
       salaryType: data.salaryType,
       monthlyBasicSalary: data.monthlyBasicSalary,
       dailyWageOverride: data.dailyWageOverride,
-      effectiveDate: data.effectiveDate,
+      dailyIncentiveRate: data.dailyIncentiveRate,
+      effectiveDate: effDate,
       remarks: data.remarks,
       createdBy: req.user.id,
     });
+
+    const emp = await db.get('SELECT full_name FROM users WHERE id = ?', [data.userId]);
+    const empName = emp?.full_name || `User #${data.userId}`;
 
     await logActivity({
       req,
       action: 'SALARY_CONFIG_SAVED',
       entityType: 'employee_salary_config',
       entityId: data.userId,
-      details: `Configured salary for user ${data.userId}: ${data.salaryType} (Basic: ₹${data.monthlyBasicSalary || 0}, Daily Override: ₹${data.dailyWageOverride || 'None'})`,
+      targetUserId: data.userId,
+      targetUserName: empName,
+      details: `Configured salary for ${empName}: ${data.salaryType === 'fixed_monthly' ? `Fixed Monthly (₹${data.monthlyBasicSalary || 0})` : `Daily Wages (Override: ${data.dailyWageOverride ? `₹${data.dailyWageOverride}` : 'Common rate'}, Fixed Daily Incentive: ₹${data.dailyIncentiveRate || 0}/day)`}`,
     });
 
     return res.json({ message: 'Employee salary configuration saved', config });
@@ -165,12 +173,17 @@ async function createIncentive(req, res) {
       ]
     );
 
+    const emp = await db.get('SELECT full_name FROM users WHERE id = ?', [data.userId]);
+    const empName = emp?.full_name || `User #${data.userId}`;
+
     await logActivity({
       req,
       action: 'INCENTIVE_CREATED',
       entityType: 'daily_incentive',
       entityId: result.lastID,
-      details: `Added incentive of ₹${data.amount} for user ${data.userId} on ${data.date} (${data.description || 'No description'})`,
+      targetUserId: data.userId,
+      targetUserName: empName,
+      details: `Added daily incentive of ₹${data.amount} for ${empName} on ${data.date} (${data.description || 'No description'})`,
     });
 
     const item = await db.get('SELECT * FROM daily_incentives WHERE id = ?', [result.lastID]);
@@ -199,12 +212,17 @@ async function updateIncentive(req, res) {
       [amount !== undefined ? amount : null, description !== undefined ? description : null, status || null, nowIso, id]
     );
 
+    const emp = await db.get('SELECT full_name FROM users WHERE id = ?', [existing.user_id]);
+    const empName = emp?.full_name || `User #${existing.user_id}`;
+
     await logActivity({
       req,
       action: 'INCENTIVE_UPDATED',
       entityType: 'daily_incentive',
       entityId: id,
-      details: `Updated incentive #${id}: amount ₹${amount}, status ${status}`,
+      targetUserId: existing.user_id,
+      targetUserName: empName,
+      details: `Updated incentive for ${empName} on ${existing.date}: amount ₹${amount ?? existing.amount}, status ${status ?? existing.status}`,
     });
 
     const updated = await db.get('SELECT * FROM daily_incentives WHERE id = ?', [id]);
@@ -222,12 +240,17 @@ async function deleteIncentive(req, res) {
 
     await db.run('DELETE FROM daily_incentives WHERE id = ?', [id]);
 
+    const emp = await db.get('SELECT full_name FROM users WHERE id = ?', [existing.user_id]);
+    const empName = emp?.full_name || `User #${existing.user_id}`;
+
     await logActivity({
       req,
       action: 'INCENTIVE_DELETED',
       entityType: 'daily_incentive',
       entityId: id,
-      details: `Deleted incentive #${id} (user ${existing.user_id}, date ${existing.date}, amount ₹${existing.amount})`,
+      targetUserId: existing.user_id,
+      targetUserName: empName,
+      details: `Deleted daily incentive of ₹${existing.amount} for ${empName} dated ${existing.date}`,
     });
 
     return res.json({ message: 'Incentive deleted successfully' });
@@ -285,12 +308,17 @@ async function createOvertime(req, res) {
       ]
     );
 
+    const emp = await db.get('SELECT full_name FROM users WHERE id = ?', [data.userId]);
+    const empName = emp?.full_name || `User #${data.userId}`;
+
     await logActivity({
       req,
       action: 'OVERTIME_RECORDED',
       entityType: 'overtime_record',
       entityId: result.lastID,
-      details: `Recorded overtime of ${data.hours} hrs (₹${data.amount}) for user ${data.userId} on ${data.date}`,
+      targetUserId: data.userId,
+      targetUserName: empName,
+      details: `Recorded overtime of ${data.hours} hrs (₹${data.amount}) for ${empName} on ${data.date}`,
     });
 
     const item = await db.get('SELECT * FROM overtime_records WHERE id = ?', [result.lastID]);
@@ -319,12 +347,17 @@ async function updateOvertime(req, res) {
       [hours !== undefined ? hours : null, amount !== undefined ? amount : null, remarks !== undefined ? remarks : null, status || null, req.user.id, id]
     );
 
+    const emp = await db.get('SELECT full_name FROM users WHERE id = ?', [existing.user_id]);
+    const empName = emp?.full_name || `User #${existing.user_id}`;
+
     await logActivity({
       req,
       action: 'OVERTIME_UPDATED',
       entityType: 'overtime_record',
       entityId: id,
-      details: `Updated overtime #${id}: hours ${hours}, amount ₹${amount}, status ${status}`,
+      targetUserId: existing.user_id,
+      targetUserName: empName,
+      details: `Updated overtime for ${empName} on ${existing.date}: ${hours ?? existing.hours} hrs, ₹${amount ?? existing.amount}, status ${status ?? existing.status}`,
     });
 
     const updated = await db.get('SELECT * FROM overtime_records WHERE id = ?', [id]);
@@ -342,12 +375,17 @@ async function deleteOvertime(req, res) {
 
     await db.run('DELETE FROM overtime_records WHERE id = ?', [id]);
 
+    const emp = await db.get('SELECT full_name FROM users WHERE id = ?', [existing.user_id]);
+    const empName = emp?.full_name || `User #${existing.user_id}`;
+
     await logActivity({
       req,
       action: 'OVERTIME_DELETED',
       entityType: 'overtime_record',
       entityId: id,
-      details: `Deleted overtime #${id} for user ${existing.user_id}`,
+      targetUserId: existing.user_id,
+      targetUserName: empName,
+      details: `Deleted overtime of ${existing.hours} hrs (₹${existing.amount}) for ${empName} dated ${existing.date}`,
     });
 
     return res.json({ message: 'Overtime record deleted' });
