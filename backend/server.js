@@ -11,6 +11,9 @@ const attendanceRoutes = require('./src/routes/attendanceRoutes');
 const locationRoutes = require('./src/routes/locationRoutes');
 const fileRoutes = require('./src/routes/fileRoutes');
 const leaveRoutes = require('./src/routes/leaveRoutes');
+const salaryRoutes = require('./src/routes/salaryRoutes');
+const auditLogController = require('./src/controllers/auditLogController');
+const { authenticateToken, requireRole } = require('./src/middleware/auth');
 
 const app = express();
 
@@ -53,6 +56,8 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/files', fileRoutes); // Authenticated selfies
 app.use('/api/leave', leaveRoutes); // Leave Management System
+app.use('/api/salary', salaryRoutes); // Salary Management System
+app.get('/api/admin/audit-logs', authenticateToken, requireRole('admin'), auditLogController.getActivityLogs); // Admin Activity Logs
 
 // 404 handler
 app.use((req, res) => {

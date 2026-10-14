@@ -280,6 +280,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       'Energizing Naturally • v1.0.0',
                                       style: TextStyle(color: AppColors.textMuted, fontSize: 12),
                                     ),
+                                    SizedBox(height: 4),
+                                    Text(
+                                      'Design and Developed By Aryan Kumar Verma',
+                                      style: TextStyle(color: AppColors.info, fontSize: 11, fontWeight: FontWeight.w500),
+                                    ),
                                   ],
                                 ),
                               ],

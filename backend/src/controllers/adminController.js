@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const config = require('../config');
 const { getCompanyDate, getDayRangeUtc } = require('../utils/timeUtils');
+const { logActivity } = require('../services/activityLogger');
 
 function isRootSuperAdmin(user) {
   if (!user) return false;
@@ -60,6 +61,14 @@ async function createUser(req, res) {
       'SELECT id, email, username, full_name, role, department, phone, is_active, created_at FROM users WHERE id = ?',
       [result.lastID]
     );
+
+    await logActivity({
+      req,
+      action: 'USER_CREATED',
+      entityType: 'user',
+      entityId: result.lastID,
+      details: `Created new ${assignedRole} account: ${full_name} (${email})`,
+    });
 
     return res.status(201).json({
       message: `${assignedRole === 'admin' ? 'Admin' : 'Employee'} created successfully`,
@@ -156,6 +165,14 @@ async function updateUser(req, res) {
       [userId]
     );
 
+    await logActivity({
+      req,
+      action: 'USER_UPDATED',
+      entityType: 'user',
+      entityId: userId,
+      details: `Updated user account: ${targetUser.full_name} (${targetUser.email})`,
+    });
+
     return res.json({ message: 'User updated successfully', user: updated });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to update user', details: error.message });
@@ -197,6 +214,14 @@ async function deleteUser(req, res) {
     await db.run('DELETE FROM location_tracks WHERE user_id = ?', [userId]);
     await db.run('DELETE FROM attendance WHERE user_id = ?', [userId]);
     await db.run('DELETE FROM users WHERE id = ?', [userId]);
+
+    await logActivity({
+      req,
+      action: 'USER_DELETED',
+      entityType: 'user',
+      entityId: userId,
+      details: `Deleted user: ${targetUser.full_name} (${targetUser.email}, role: ${targetUser.role})`,
+    });
 
     return res.json({
       message: `User ${targetUser.full_name} (${targetUser.role}) has been permanently deleted.`,
@@ -335,7 +360,18 @@ async function getGpsAlerts(req, res) {
        JOIN users u ON ga.user_id = u.id
        ORDER BY ga.created_at DESC LIMIT 100`
     );
-    return res.json({ alerts });
+    const formattedAlerts = alerts.map((a) => {
+      let createdIso = a.created_at;
+      if (typeof createdIso === 'string') {
+        if (!createdIso.endsWith('Z') && !createdIso.includes('+')) {
+          createdIso = createdIso.replace(' ', 'T') + 'Z';
+        }
+      } else if (createdIso instanceof Date) {
+        createdIso = createdIso.toISOString();
+      }
+      return { ...a, created_at: createdIso };
+    });
+    return res.json({ alerts: formattedAlerts });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to fetch GPS alerts', details: error.message });
   }

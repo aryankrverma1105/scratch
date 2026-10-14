@@ -36,7 +36,17 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function requireRole(role) {
+  return (req, res, next) => {
+    if (!req.user || req.user.role !== role) {
+      return res.status(403).json({ error: `${role} privileges required` });
+    }
+    next();
+  };
+}
+
 module.exports = {
   authenticateToken,
   requireAdmin,
+  requireRole,
 };

@@ -15,8 +15,11 @@ import '../../models/attendance_model.dart';
 import '../../models/user_model.dart';
 import 'profile_screen.dart';
 import 'leave_management_screen.dart';
+import 'employee_salary_screen.dart';
 import '../admin/admin_employee_attendance_screen.dart';
 import '../admin/admin_leave_screen.dart';
+import '../admin/admin_salary_screen.dart';
+import '../admin/admin_audit_logs_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -964,6 +967,70 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
 
+                        // Salary & Payslip Portal Card
+                        const SizedBox(height: 12),
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF064E3B), Color(0xFF0F172A)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFF10B981).withOpacity(0.35)),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black38,
+                                blurRadius: 10,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const EmployeeSalaryScreen()),
+                              );
+                            },
+                            child: const Padding(
+                              padding: EdgeInsets.all(18),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 24,
+                                    backgroundColor: Color(0x3310B981),
+                                    child: Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF34D399), size: 26),
+                                  ),
+                                  SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Salary & Payslip Portal',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                        SizedBox(height: 3),
+                                        Text(
+                                          'Daily wages / fixed salary, incentives, overtime & net take-home',
+                                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 15),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
                         if (ApiService().currentUser?.isAdmin ?? false) ...[
                           const SizedBox(height: 25),
                           const Text(
@@ -1067,6 +1134,104 @@ class _HomeScreenState extends State<HomeScreen> {
                                       ),
                                     ),
                                     Icon(Icons.arrow_forward_ios, color: Color(0xFF10B981), size: 14),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.cardDark,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: Colors.amber.withOpacity(0.35)),
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const AdminSalaryScreen(),
+                                  ),
+                                );
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: Color(0x33FFC107),
+                                      child: Icon(Icons.payments_outlined, color: Colors.amber, size: 24),
+                                    ),
+                                    SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Salary Management & Payroll',
+                                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
+                                          SizedBox(height: 3),
+                                          Text(
+                                            'Common daily wage, employee salary types, daily incentives, overtime & finalize payroll',
+                                            style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_forward_ios, color: Colors.amber, size: 14),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.cardDark,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: Colors.deepPurpleAccent.withOpacity(0.35)),
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const AdminAuditLogsScreen(),
+                                  ),
+                                );
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: Color(0x337C4DFF),
+                                      child: Icon(Icons.receipt_long_outlined, color: Colors.deepPurpleAccent, size: 24),
+                                    ),
+                                    SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'System Activity Audit Logs',
+                                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
+                                          SizedBox(height: 3),
+                                          Text(
+                                            'Audit log of all actions: user creations, deletions, salary assignments, payroll & changes',
+                                            style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_forward_ios, color: Colors.deepPurpleAccent, size: 14),
                                   ],
                                 ),
                               ),

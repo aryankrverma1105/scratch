@@ -124,7 +124,20 @@ class GpsAlert {
       alertType: json['alert_type'] ?? 'GPS_DISABLED',
       message: json['message'] ?? '',
       resolved: json['resolved'] == 1 || json['resolved'] == true,
-      createdAt: (DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now()).toLocal(),
+      createdAt: _parseUtcToLocal(json['created_at']),
     );
+  }
+
+  static DateTime _parseUtcToLocal(dynamic raw) {
+    if (raw == null) return DateTime.now();
+    String str = raw.toString().trim();
+    if (str.isEmpty) return DateTime.now();
+    if (str.contains(' ') && !str.contains('T')) {
+      str = str.replaceFirst(' ', 'T');
+    }
+    if (!str.endsWith('Z') && !str.contains('+') && !str.substring(str.length > 10 ? 10 : 0).contains('-')) {
+      str = '${str}Z';
+    }
+    return (DateTime.tryParse(str) ?? DateTime.now()).toLocal();
   }
 }

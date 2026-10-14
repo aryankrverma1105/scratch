@@ -6,6 +6,7 @@ import '../../models/user_model.dart';
 import '../../models/attendance_model.dart';
 import '../../models/location_model.dart';
 import '../../models/leave_models.dart';
+import '../../models/salary_models.dart';
 import 'sync_service.dart';
 
 class ApiService {
@@ -762,6 +763,259 @@ class ApiService {
       await _dio.delete('/api/leave/admin/holidays/$holidayId');
     } on DioException catch (e) {
       throw Exception(e.response?.data?['error'] ?? 'Failed to delete holiday');
+    }
+  }
+
+  // --- Salary & Payroll APIs ---
+
+  Future<SalarySettingsModel> getSalarySettings() async {
+    try {
+      final response = await _dio.get('/api/salary/admin/settings');
+      return SalarySettingsModel.fromJson(response.data['settings']);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch salary settings');
+    }
+  }
+
+  Future<SalarySettingsModel> updateSalarySettings(double commonDailyWage) async {
+    try {
+      final response = await _dio.put('/api/salary/admin/settings', data: {
+        'commonDailyWage': commonDailyWage,
+      });
+      return SalarySettingsModel.fromJson(response.data['settings']);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to update salary settings');
+    }
+  }
+
+  Future<List<EmployeeSalaryConfigModel>> getEmployeeSalaryConfigs() async {
+    try {
+      final response = await _dio.get('/api/salary/admin/configs');
+      final list = (response.data['configs'] as List? ?? []);
+      return list.map((c) => EmployeeSalaryConfigModel.fromJson(c)).toList();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch employee configs');
+    }
+  }
+
+  Future<EmployeeSalaryConfigModel> saveEmployeeSalaryConfig({
+    required int userId,
+    required String salaryType,
+    double? monthlyBasicSalary,
+    double? dailyWageOverride,
+    String? effectiveDate,
+    String? remarks,
+  }) async {
+    try {
+      final response = await _dio.post('/api/salary/admin/configs', data: {
+        'userId': userId,
+        'salaryType': salaryType,
+        'monthlyBasicSalary': monthlyBasicSalary ?? 0.0,
+        'dailyWageOverride': dailyWageOverride,
+        'effectiveDate': effectiveDate,
+        'remarks': remarks,
+      });
+      return EmployeeSalaryConfigModel.fromJson(response.data['config']);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to save salary config');
+    }
+  }
+
+  Future<List<DailyIncentiveModel>> getAdminIncentives({String? month, int? userId}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (month != null) params['month'] = month;
+      if (userId != null) params['userId'] = userId;
+      final response = await _dio.get('/api/salary/admin/incentives', queryParameters: params);
+      final list = (response.data['incentives'] as List? ?? []);
+      return list.map((i) => DailyIncentiveModel.fromJson(i)).toList();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch incentives');
+    }
+  }
+
+  Future<DailyIncentiveModel> createIncentive({
+    required int userId,
+    required String date,
+    required double amount,
+    String? description,
+    String? status,
+  }) async {
+    try {
+      final response = await _dio.post('/api/salary/admin/incentives', data: {
+        'userId': userId,
+        'date': date,
+        'amount': amount,
+        'description': description,
+        'status': status ?? 'approved',
+      });
+      return DailyIncentiveModel.fromJson(response.data['incentive']);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to create incentive');
+    }
+  }
+
+  Future<void> deleteIncentive(int id) async {
+    try {
+      await _dio.delete('/api/salary/admin/incentives/$id');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to delete incentive');
+    }
+  }
+
+  Future<List<OvertimeRecordModel>> getAdminOvertime({String? month, int? userId}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (month != null) params['month'] = month;
+      if (userId != null) params['userId'] = userId;
+      final response = await _dio.get('/api/salary/admin/overtime', queryParameters: params);
+      final list = (response.data['overtimes'] as List? ?? []);
+      return list.map((o) => OvertimeRecordModel.fromJson(o)).toList();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch overtime');
+    }
+  }
+
+  Future<OvertimeRecordModel> createOvertime({
+    required int userId,
+    required String date,
+    required double hours,
+    required double amount,
+    String? remarks,
+    String? status,
+  }) async {
+    try {
+      final response = await _dio.post('/api/salary/admin/overtime', data: {
+        'userId': userId,
+        'date': date,
+        'hours': hours,
+        'amount': amount,
+        'remarks': remarks,
+        'status': status ?? 'approved',
+      });
+      return OvertimeRecordModel.fromJson(response.data['overtime']);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to record overtime');
+    }
+  }
+
+  Future<void> deleteOvertime(int id) async {
+    try {
+      await _dio.delete('/api/salary/admin/overtime/$id');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to delete overtime');
+    }
+  }
+
+  Future<Map<String, dynamic>> previewPayroll({String? month}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (month != null) params['month'] = month;
+      final response = await _dio.get('/api/salary/admin/payroll/preview', queryParameters: params);
+      final list = (response.data['calculations'] as List? ?? []);
+      final calculations = list.map((c) => SalaryCalculationModel.fromJson(c)).toList();
+      return {
+        'month': response.data['month'],
+        'isFinalized': response.data['isFinalized'] ?? false,
+        'finalizedAt': response.data['finalizedAt'],
+        'calculations': calculations,
+      };
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to preview payroll');
+    }
+  }
+
+  Future<void> finalizePayroll({required String month, String? notes}) async {
+    try {
+      await _dio.post('/api/salary/admin/payroll/finalize', data: {
+        'month': month,
+        'notes': notes,
+      });
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to finalize payroll');
+    }
+  }
+
+  Future<String> exportPayrollCsv({String? month}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (month != null) params['month'] = month;
+      final response = await _dio.get(
+        '/api/salary/admin/payroll/export',
+        queryParameters: params,
+        options: Options(responseType: ResponseType.plain),
+      );
+      return response.data.toString();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to export payroll CSV');
+    }
+  }
+
+  Future<SalaryCalculationModel> getMySalary({String? month}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (month != null) params['month'] = month;
+      final response = await _dio.get('/api/salary/my-salary', queryParameters: params);
+      return SalaryCalculationModel.fromJson(response.data['salary']);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch my salary');
+    }
+  }
+
+  Future<List<DailyIncentiveModel>> getMyIncentives({String? month}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (month != null) params['month'] = month;
+      final response = await _dio.get('/api/salary/my-incentives', queryParameters: params);
+      final list = (response.data['incentives'] as List? ?? []);
+      return list.map((i) => DailyIncentiveModel.fromJson(i)).toList();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch my incentives');
+    }
+  }
+
+  Future<List<OvertimeRecordModel>> getMyOvertime({String? month}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (month != null) params['month'] = month;
+      final response = await _dio.get('/api/salary/my-overtime', queryParameters: params);
+      final list = (response.data['overtimes'] as List? ?? []);
+      return list.map((o) => OvertimeRecordModel.fromJson(o)).toList();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch my overtime');
+    }
+  }
+
+  Future<List<SalaryCalculationModel>> getMyPayrollHistory() async {
+    try {
+      final response = await _dio.get('/api/salary/my-history');
+      final list = (response.data['history'] as List? ?? []);
+      return list.map((h) => SalaryCalculationModel.fromJson(h)).toList();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch payroll history');
+    }
+  }
+
+  // --- Admin Audit / Activity Logs ---
+
+  Future<Map<String, dynamic>> getActivityLogs({int page = 1, int limit = 50, String? action}) async {
+    try {
+      final params = <String, dynamic>{
+        'page': page,
+        'limit': limit,
+      };
+      if (action != null && action.isNotEmpty) params['action'] = action;
+      final response = await _dio.get('/api/admin/audit-logs', queryParameters: params);
+      final list = (response.data['logs'] as List? ?? []);
+      final logs = list.map((l) => ActivityLogModel.fromJson(l)).toList();
+      return {
+        'page': response.data['page'],
+        'totalPages': response.data['totalPages'],
+        'total': response.data['total'],
+        'logs': logs,
+      };
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch activity logs');
     }
   }
 }
