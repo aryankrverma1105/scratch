@@ -18,8 +18,12 @@ void main() async {
     ),
   );
 
-  // Initialize REST API service & token storage
-  await ApiService().init();
+  // Initialize REST API service & token storage safely
+  try {
+    await ApiService().init();
+  } catch (e) {
+    debugPrint('ApiService init notice: $e');
+  }
 
   // Initialize Android Foreground Background Location Service
   try {
