@@ -693,6 +693,20 @@ function initDatabase() {
         }
       },
     },
+    {
+      version: 7,
+      name: 'cleanup_pre_november_2026_leave_accruals',
+      up: async () => {
+        try {
+          // Remove pre-November 2026 accruals for 2026-2027
+          await run(`DELETE FROM leave_accruals WHERE leave_year = '2026-2027' AND month < '2026-11'`);
+          // Reset leave_balances for 2026-2027 to 0
+          await run(`UPDATE leave_balances SET accrued = 0, balance = 0 WHERE leave_year = '2026-2027'`);
+        } catch (err) {
+          console.warn('Migration v7 warning:', err.message);
+        }
+      },
+    },
   ];
 
   for (const m of migrations) {

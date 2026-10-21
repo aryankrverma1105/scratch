@@ -78,6 +78,18 @@ async function accrueMonthlyLeaves(yearMonth, force = false) {
     };
   }
 
+  // For the launch year 2026-2027, app launches in November, so months prior to November 2026 are not backfilled unless forced
+  if (!force && leaveYearCode === '2026-2027' && yearMonth < '2026-11') {
+    return {
+      success: true,
+      message: `Month ${yearMonth} is prior to November 2026 production launch. Accrual skipped.`,
+      month: yearMonth,
+      leaveYear: leaveYearCode,
+      accruedUsers: 0,
+      skipped: true,
+    };
+  }
+
   await ensureLeaveYearExists(leaveYearCode);
   const activeUsers = await db.query('SELECT id, full_name, joining_date, exit_date FROM users WHERE is_active = 1');
   let accruedCount = 0;
@@ -156,6 +168,7 @@ async function syncLeaveAccrualsForYear(leaveYearCode = getLeaveYear()) {
   let totalAccrued = 0;
 
   for (const m of allMonths) {
+    if (leaveYearCode === '2026-2027' && m < '2026-11') continue;
     if (isMonthCompleted(m, todayStr)) {
       const res = await accrueMonthlyLeaves(m, false);
       if (res.accruedUsers) totalAccrued += res.accruedUsers;

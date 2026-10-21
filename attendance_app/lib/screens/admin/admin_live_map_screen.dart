@@ -111,6 +111,24 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
     }
   }
 
+  String _formatLastSeen(DateTime? dt) {
+    if (dt == null) return 'Never';
+    final local = dt.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final targetDate = DateTime(local.year, local.month, local.day);
+    final timeStr = DateFormat('hh:mm a').format(local);
+    final dateStr = DateFormat('dd MMM yyyy').format(local);
+
+    if (targetDate == today) {
+      return 'Today (${DateFormat('dd MMM').format(local)}), $timeStr';
+    } else if (targetDate == today.subtract(const Duration(days: 1))) {
+      return 'Yesterday (${DateFormat('dd MMM').format(local)}), $timeStr';
+    } else {
+      return '$dateStr, $timeStr';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final activeEmployees = _employees.where((e) => e.isWorking).toList();
@@ -133,7 +151,11 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
           ? 'Active now'
           : minutesAgo < 60
               ? '${minutesAgo}m ago'
-              : '${minutesAgo ~/ 60}h ago';
+              : minutesAgo < 1440
+                  ? '${minutesAgo ~/ 60}h ago'
+                  : (emp.lastLocationTime != null
+                      ? DateFormat('dd MMM').format(emp.lastLocationTime!.toLocal())
+                      : '${minutesAgo ~/ 1440}d ago');
 
       Color markerColor;
       if (isMocked) {
@@ -391,10 +413,13 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                         ),
                         if (_selectedEmployee!.lastLocationTime != null)
                           Expanded(
-                            child: Text(
-                              'Last Seen: ${DateTime.now().toUtc().difference(_selectedEmployee!.lastLocationTime!.toUtc()).inMinutes == 0 ? "Just now" : "${DateTime.now().toUtc().difference(_selectedEmployee!.lastLocationTime!.toUtc()).inMinutes}m ago"} (${DateFormat('hh:mm a').format(_selectedEmployee!.lastLocationTime!)})',
-                              style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-                              overflow: TextOverflow.ellipsis,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: Text(
+                                'Last Seen: ${_formatLastSeen(_selectedEmployee!.lastLocationTime)}',
+                                style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ),
                       ],

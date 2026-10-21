@@ -24,6 +24,10 @@ function initLeaveCronJobs() {
           prevYear = y - 1;
         }
         const prevMonthStr = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+        if (prevMonthStr < '2026-11') {
+          console.log(`⏰ [LEAVE-CRON] Skipping accrual for ${prevMonthStr} (pre-launch month).`);
+          return;
+        }
         const res = await leaveService.accrueMonthlyLeaves(prevMonthStr, true);
         console.log(`✅ [LEAVE-CRON] Monthly accrual for ${prevMonthStr} finished:`, res);
       } catch (err) {
