@@ -2,6 +2,7 @@ const leaveService = require('../services/leaveService');
 const { getLeaveYear } = require('../utils/leaveUtils');
 const { getCompanyDate } = require('../utils/timeUtils');
 const db = require('../db');
+const { isRootSuperAdmin } = require('./adminController');
 
 // Employee: Get current leave balance
 async function getMyLeaveBalance(req, res) {
@@ -353,15 +354,27 @@ async function adminTriggerAccrual(req, res) {
   }
 }
 
-// Admin: Reset all leave balances for launch starting from November
+// Super Admin: Reset all leave balances and optionally holidays for launch starting from November
 async function adminResetLeaveBalances(req, res) {
   try {
+    if (!isRootSuperAdmin(req.user)) {
+      return res.status(403).json({
+        error: 'Forbidden: Only the Root Super Admin account can reset employee leaves and holidays for launch.',
+      });
+    }
+
     const leaveYear = req.body?.leaveYear || '2026-2027';
+    const resetHolidays = req.body?.resetHolidays === true;
+
     await db.run('DELETE FROM leave_balances');
     await db.run('DELETE FROM leave_records');
     await db.run('DELETE FROM leave_accruals');
     await db.run('DELETE FROM attendance_absences');
     await db.run('DELETE FROM monthly_attendance_summaries');
+
+    if (resetHolidays) {
+      await db.run('DELETE FROM company_holidays WHERE leave_year = ?', [leaveYear]);
+    }
 
     const parts = leaveYear.split('-');
     await db.run(
@@ -384,13 +397,14 @@ async function adminResetLeaveBalances(req, res) {
       req,
       action: 'LEAVE_BALANCES_RESET',
       entityType: 'leave_system',
-      details: `Reset all leave balances and records to 0 for production launch starting from November (Leave Year: ${leaveYear})`,
+      details: `Super Admin reset all leave balances and records${resetHolidays ? ' and company holidays' : ''} to 0 for November production launch (Leave Year: ${leaveYear})`,
     });
 
     return res.json({
       success: true,
-      message: `All leave balances reset to 0 for launch starting from November (Leave Year: ${leaveYear})`,
+      message: `All leave balances${resetHolidays ? ' and company holidays' : ''} reset to 0 for November launch (Leave Year: ${leaveYear})`,
       usersReset: users.length,
+      holidaysReset: resetHolidays,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });

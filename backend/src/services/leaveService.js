@@ -176,17 +176,12 @@ async function getCompanyHolidays(leaveYearCode) {
   );
 
   const activeCount = holidays.filter((h) => h.is_active === 1 || h.is_active === true).length;
-  const isComplete = activeCount === 16;
-  const warning = !isComplete
-    ? `Warning: Exactly 16 fixed company holidays are required per annual policy. Currently ${activeCount} configured.`
-    : null;
 
   return {
     leaveYear: yearCode,
     count: activeCount,
-    target: 16,
-    isComplete,
-    warning,
+    isComplete: true,
+    warning: null,
     holidays,
   };
 }

@@ -7,6 +7,7 @@ class LiveEmployeeLocation {
   final int? attendanceId;
   final String? attendanceStatus;
   final DateTime? checkInTime;
+  final String? checkInAddress;
   final double? lastLatitude;
   final double? lastLongitude;
   final double? lastAccuracy;
@@ -23,6 +24,7 @@ class LiveEmployeeLocation {
     this.attendanceId,
     this.attendanceStatus,
     this.checkInTime,
+    this.checkInAddress,
     this.lastLatitude,
     this.lastLongitude,
     this.lastAccuracy,
@@ -46,6 +48,7 @@ class LiveEmployeeLocation {
       attendanceId: json['attendance_id'] != null ? int.tryParse(json['attendance_id'].toString()) : null,
       attendanceStatus: json['attendance_status'],
       checkInTime: json['check_in_time'] != null ? DateTime.tryParse(json['check_in_time'].toString())?.toLocal() : null,
+      checkInAddress: json['check_in_address'],
       lastLatitude: (json['last_latitude'] as num?)?.toDouble(),
       lastLongitude: (json['last_longitude'] as num?)?.toDouble(),
       lastAccuracy: (json['last_accuracy'] as num?)?.toDouble(),

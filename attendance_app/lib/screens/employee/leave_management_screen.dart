@@ -552,7 +552,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                'Leave Year: ${_balance?.leaveYear ?? "Current"} (1 Apr – 31 Mar) • 40 Days Policy',
+                                'Leave Year: ${_balance?.leaveYear ?? "Current"} (1 Apr – 31 Mar) • Earned Leaves & Office Holidays',
                                 style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                               ),
                             ),

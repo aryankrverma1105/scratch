@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
+import '../../core/services/reverse_geocoding_service.dart';
 import '../../models/location_model.dart';
 import 'admin_route_history_screen.dart';
 import 'admin_attendance_screen.dart';
@@ -19,6 +20,9 @@ class AdminLiveMapScreen extends StatefulWidget {
 
 class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
   final MapController _mapController = MapController();
+  final ReverseGeocodingService _geocodingService = ReverseGeocodingService();
+  final Map<int, String> _resolvedAddresses = {};
+
   List<LiveEmployeeLocation> _employees = [];
   bool _isLoading = true;
   Timer? _refreshTimer;
@@ -42,6 +46,25 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
         setState(() {
           _employees = list;
         });
+
+        // Resolve exact place names in background for active tracked employees
+        for (final emp in list) {
+          if (emp.hasValidLocation && !_resolvedAddresses.containsKey(emp.userId)) {
+            if (emp.checkInAddress != null &&
+                emp.checkInAddress!.isNotEmpty &&
+                !emp.checkInAddress!.startsWith('GPS:') &&
+                !emp.checkInAddress!.startsWith('Lat:')) {
+              _resolvedAddresses[emp.userId] = emp.checkInAddress!;
+            }
+            _geocodingService.getPlaceName(emp.lastLatitude!, emp.lastLongitude!).then((place) {
+              if (mounted) {
+                setState(() {
+                  _resolvedAddresses[emp.userId] = place;
+                });
+              }
+            });
+          }
+        }
 
         // If we have employees with valid locations and none selected, center on first active
         final activeWithLoc = list.where((e) => e.hasValidLocation).toList();
@@ -74,6 +97,17 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
         LatLng(emp.lastLatitude!, emp.lastLongitude!),
         15.5,
       );
+
+      // Ensure exact place name is fetched for the selected employee
+      if (!_resolvedAddresses.containsKey(emp.userId) || _resolvedAddresses[emp.userId]!.startsWith('GPS:')) {
+        _geocodingService.getPlaceName(emp.lastLatitude!, emp.lastLongitude!).then((place) {
+          if (mounted) {
+            setState(() {
+              _resolvedAddresses[emp.userId] = place;
+            });
+          }
+        });
+      }
     }
   }
 
@@ -116,10 +150,13 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
         markerColor = Colors.grey; // Grey (> 15m)
       }
 
+      final place = _resolvedAddresses[emp.userId];
+      final shortPlace = place?.split(',').first.trim();
+
       markers.add(
         Marker(
           point: LatLng(emp.lastLatitude!, emp.lastLongitude!),
-          width: 100,
+          width: 120,
           height: 75,
           child: GestureDetector(
             onTap: () => _showEmployeeDetails(emp),
@@ -156,7 +193,11 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                     ],
                   ),
                   child: Text(
-                    isMocked ? '⚠️ MOCK' : '${emp.fullName.split(' ').first} • $lastSeenText',
+                    isMocked
+                        ? '⚠️ MOCK'
+                        : shortPlace != null
+                            ? '${emp.fullName.split(' ').first} • $shortPlace'
+                            : '${emp.fullName.split(' ').first} • $lastSeenText',
                     style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -357,6 +398,63 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                             ),
                           ),
                       ],
+                    ),
+                    const SizedBox(height: 10),
+                    // Exact Location / Place Name Container
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Icon(Icons.place, color: Colors.amberAccent, size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'CURRENT PLACE / ADDRESS',
+                                  style: TextStyle(
+                                    color: Colors.amberAccent,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  _resolvedAddresses[_selectedEmployee!.userId] ??
+                                      _selectedEmployee!.checkInAddress ??
+                                      (_selectedEmployee!.hasValidLocation
+                                          ? 'Resolving exact place name...'
+                                          : 'No GPS coordinates available'),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.3,
+                                  ),
+                                ),
+                                if (_selectedEmployee!.hasValidLocation) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Coordinates: ${_selectedEmployee!.lastLatitude!.toStringAsFixed(5)}, ${_selectedEmployee!.lastLongitude!.toStringAsFixed(5)}${_selectedEmployee!.lastAccuracy != null ? " (±${_selectedEmployee!.lastAccuracy!.toStringAsFixed(1)}m)" : ""}',
+                                    style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 14),
                     Row(

@@ -840,9 +840,11 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> adminResetLeaveBalances({String? leaveYear}) async {
+  Future<Map<String, dynamic>> adminResetLeaveBalances({String? leaveYear, bool resetHolidays = false}) async {
     try {
-      final data = <String, dynamic>{};
+      final data = <String, dynamic>{
+        'resetHolidays': resetHolidays,
+      };
       if (leaveYear != null) data['leaveYear'] = leaveYear;
       final response = await _dio.post('/api/leave/admin/reset-balances', data: data);
       return response.data;

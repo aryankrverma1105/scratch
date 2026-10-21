@@ -1,0 +1,52 @@
+name: iOS Build & Archive
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'attendance_app/**'
+      - '.github/workflows/ios_build.yml'
+    branches:
+      - main
+
+jobs:
+  build-ios:
+    name: Build iOS App (macOS Runner)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: attendance_app
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Install CocoaPods Dependencies
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: Build iOS Application (No Codesign for Testing/Artifact)
+        run: flutter build ios --release --no-codesign
+
+      - name: Archive Runner.app into Payload Zip
+        run: |
+          mkdir -p build/ios/iphoneos/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload/
+          cd build/ios/iphoneos
+          zip -r SologixAttendance_iOS_Unsigned.ipa Payload
+
+      - name: Upload iOS IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sologix-attendance-ios-unsigned
+          path: attendance_app/build/ios/iphoneos/SologixAttendance_iOS_Unsigned.ipa
+          retention-days: 14

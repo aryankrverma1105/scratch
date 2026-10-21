@@ -108,14 +108,14 @@ describe('Leave Management System Comprehensive Test Suite', () => {
       });
     assert.strictEqual(dup.status, 400);
 
-    // Get holidays and verify 16-day count & warning
+    // Get holidays and verify count (no fixed 16 limit; flexible office leaves allowed)
     const list = await request(app)
       .get(`/api/leave/holidays?year=${testLeaveYear}`)
       .set('Authorization', `Bearer ${employeeToken}`);
     assert.strictEqual(list.status, 200);
-    assert.strictEqual(list.body.target, 16);
-    assert.strictEqual(list.body.isComplete, false);
-    assert.ok(list.body.warning.includes('16 fixed company holidays are required'));
+    assert.strictEqual(list.body.count, 1);
+    assert.strictEqual(list.body.isComplete, true);
+    assert.strictEqual(list.body.warning, null);
   });
 
   it('5. Sundays and fixed company holidays never consume earned leave', async () => {
@@ -512,5 +512,59 @@ describe('Leave Management System Comprehensive Test Suite', () => {
       .get('/api/leave/admin/summaries')
       .set('Authorization', `Bearer ${employeeToken}`);
     assert.strictEqual(forbiddenRes.status, 403);
+  });
+
+  it('23. Only Root Super Admin can reset leave and holiday balances for launch', async () => {
+    // Non-superadmin admin: create a secondary admin
+    const secAdminRes = await request(app)
+      .post('/api/admin/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: 'secondary_admin@company.com',
+        username: 'secondary_admin',
+        password: 'Password123!',
+        full_name: 'Secondary Admin',
+        role: 'admin',
+      });
+
+    let secAdminToken = null;
+    if (secAdminRes.status === 201) {
+      const loginRes = await request(app)
+        .post('/api/auth/login')
+        .send({ identifier: 'secondary_admin@company.com', password: 'Password123!' });
+      secAdminToken = loginRes.body.token;
+    }
+
+    if (secAdminToken) {
+      const denied = await request(app)
+        .post('/api/leave/admin/reset-balances')
+        .set('Authorization', `Bearer ${secAdminToken}`)
+        .send({ leaveYear: testLeaveYear, resetHolidays: true });
+      assert.strictEqual(denied.status, 403);
+      assert.ok(denied.body.error.includes('Forbidden: Only the Root Super Admin'));
+    }
+
+    // Non-superadmin adminToken is rejected with 403
+    const deniedAdmin = await request(app)
+      .post('/api/leave/admin/reset-balances')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ leaveYear: testLeaveYear, resetHolidays: false });
+    assert.strictEqual(deniedAdmin.status, 403);
+    assert.ok(deniedAdmin.body.error.includes('Forbidden: Only the Root Super Admin'));
+
+    // Root super admin can execute reset
+    const jwt = require('jsonwebtoken');
+    const config = require('../src/config');
+    const superAdminToken = jwt.sign(
+      { id: 1, email: 'admin@company.com', role: 'admin' },
+      config.JWT_SECRET
+    );
+
+    const allowed = await request(app)
+      .post('/api/leave/admin/reset-balances')
+      .set('Authorization', `Bearer ${superAdminToken}`)
+      .send({ leaveYear: testLeaveYear, resetHolidays: false });
+    assert.strictEqual(allowed.status, 200);
+    assert.strictEqual(allowed.body.success, true);
   });
 });

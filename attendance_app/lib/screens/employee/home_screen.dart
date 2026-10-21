@@ -10,6 +10,7 @@ import '../../core/services/background_tracker.dart';
 import '../../core/services/sync_service.dart';
 import '../../core/services/outbox_service.dart';
 import '../../core/services/permission_service.dart';
+import '../../core/services/reverse_geocoding_service.dart';
 import 'permissions_screen.dart';
 import '../../models/attendance_model.dart';
 import '../../models/user_model.dart';
@@ -273,11 +274,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (isCheckIn) {
         try {
+          String? currentPlace;
+          try {
+            currentPlace = await ReverseGeocodingService().getPlaceName(
+              gpsResult.position.latitude,
+              gpsResult.position.longitude,
+            );
+          } catch (_) {}
+
           final newRecord = await ApiService().checkIn(
             latitude: gpsResult.position.latitude,
             longitude: gpsResult.position.longitude,
             accuracy: gpsResult.position.accuracy,
             isMocked: gpsResult.isMocked,
+            address: currentPlace,
             selfieFile: confirmedSelfieFile,
           );
 

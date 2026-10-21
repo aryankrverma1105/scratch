@@ -442,4 +442,5 @@ module.exports = {
   getAllAttendance,
   getGpsAlerts,
   resolveGpsAlert,
+  isRootSuperAdmin,
 };
