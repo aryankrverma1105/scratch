@@ -31,3 +31,4 @@ Thumbs.db
 
 # Agent configs
 .agent/
+*.hprof
