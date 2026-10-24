@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const salaryController = require('../controllers/salaryController');
-const auditLogController = require('../controllers/auditLogController');
 
 // All salary routes require authentication
 router.use(authenticateToken);
@@ -31,9 +30,17 @@ router.post('/admin/overtime', requireRole('admin'), salaryController.createOver
 router.put('/admin/overtime/:id', requireRole('admin'), salaryController.updateOvertime);
 router.delete('/admin/overtime/:id', requireRole('admin'), salaryController.deleteOvertime);
 
+// Payroll preview, records & export
 router.get('/admin/payroll/preview', requireRole('admin'), salaryController.previewPayroll);
 router.post('/admin/payroll/finalize', requireRole('admin'), salaryController.finalizePayroll);
 router.get('/admin/payroll/export', requireRole('admin'), salaryController.exportPayrollCsv);
 router.get('/admin/payroll/records', requireRole('admin'), salaryController.getPayrollRecords);
+
+// Salary Cycles & Disbursement Batches
+router.get('/admin/cycles/active', requireRole('admin'), salaryController.getActiveCycle);
+router.get('/admin/cycles', requireRole('admin'), salaryController.listCycles);
+router.get('/admin/cycles/:cycleCode', requireRole('admin'), salaryController.getCycleDetails);
+router.post('/admin/cycles/disburse-and-advance', requireRole('admin'), salaryController.disburseAndAdvance);
+router.post('/admin/cycles/:cycleCode/record-payment', requireRole('admin'), salaryController.recordAdditionalPayment);
 
 module.exports = router;

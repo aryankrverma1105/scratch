@@ -239,6 +239,32 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
     );
   }
 
+  String _getStatusText(SalaryCalculationModel s) {
+    if (s.paymentStatus == 'paid') return 'PAID';
+    if (s.paymentStatus == 'partially_paid') return 'PARTIALLY PAID';
+    if (s.paymentStatus == 'closed_unpaid') return 'CLOSED — UNPAID';
+    if (s.isFinalized) return 'FINALIZED';
+    if (!s.hasConfig || (s.payableDays == 0 && s.absentDays > 0)) return 'REVIEW REQUIRED';
+    return 'DRAFT';
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'PAID':
+        return AppColors.success;
+      case 'PARTIALLY PAID':
+        return Colors.orange;
+      case 'CLOSED — UNPAID':
+        return AppColors.error;
+      case 'FINALIZED':
+        return Colors.lightBlueAccent;
+      case 'REVIEW REQUIRED':
+        return Colors.amber;
+      default:
+        return Colors.cyan;
+    }
+  }
+
   Widget _buildSummaryTab() {
     if (_salary == null) {
       return const Center(child: Text('No salary record available', style: TextStyle(color: AppColors.textMuted)));
@@ -246,12 +272,86 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
 
     final s = _salary!;
     final isDaily = s.salaryType == 'daily_wage';
+    final statusText = _getStatusText(s);
+    final statusColor = _getStatusColor(statusText);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Configuration Warning Banner if config missing
+          if (!s.hasConfig) ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.warning.withOpacity(0.4)),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Configuration Setup Required: Your profile does not have an assigned salary rate or wage configuration. Please contact your company administrator to configure your daily wage or monthly salary.',
+                      style: TextStyle(color: AppColors.warning, fontSize: 12.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Cycle Information Banner
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.cardDark,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.info.withOpacity(0.25)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.calendar_today, color: AppColors.info, size: 16),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Salary Cycle Period', style: TextStyle(color: AppColors.textDim, fontSize: 10.5)),
+                        Text(
+                          s.cycleStartDate.isNotEmpty
+                              ? '${s.cycleStartDate} to ${s.cycleEndDate} (3rd boundary)'
+                              : '${s.payrollPeriod} Cycle (3rd boundary)',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: statusColor.withOpacity(0.6)),
+                  ),
+                  child: Text(
+                    statusText,
+                    style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 10),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           // Net Salary Hero Card
           Container(
             padding: const EdgeInsets.all(22),
@@ -293,25 +393,16 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
                         ),
                       ],
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: s.isFinalized ? AppColors.success.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        s.isFinalized ? 'FINALIZED PAYSLIP' : 'DRAFT ESTIMATE',
-                        style: TextStyle(
-                          color: s.isFinalized ? AppColors.success : Colors.orange,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                        ),
-                      ),
+                    Text(
+                      isDaily
+                          ? 'Rate: ₹${s.baseRate.toStringAsFixed(0)}/day'
+                          : 'Basic: ₹${NumberFormat('#,##,##0').format(s.baseRate)} (Cap)',
+                      style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
                 const SizedBox(height: 18),
-                const Text('Net Take-Home Salary', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                const Text('Net Payable Take-Home Salary', style: TextStyle(color: Colors.white70, fontSize: 13)),
                 const SizedBox(height: 4),
                 Text(
                   '₹${NumberFormat('#,##,##0.00').format(s.netSalary)}',
@@ -329,13 +420,32 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _buildStatItem('Gross Salary', '₹${NumberFormat('#,##,##0').format(s.grossSalary)}'),
-                    _buildStatItem('Deductions', '₹${NumberFormat('#,##,##0').format(s.totalDeductions)}'),
-                    if (isDaily)
-                      _buildStatItem('Total CTC', '₹${NumberFormat('#,##,##0').format(s.ctc)}')
-                    else
-                      _buildStatItem('Working Days', '${s.totalWorkingDays.toInt()} days'),
+                    _buildStatItem('Already Paid', '₹${NumberFormat('#,##,##0').format(s.amountDisbursed)}'),
+                    _buildStatItem(
+                      'Remaining Payable',
+                      '₹${NumberFormat('#,##,##0').format(s.remainingPayable)}',
+                    ),
                   ],
                 ),
+                if (s.paymentDate != null || s.disbursementReference != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        if (s.paymentDate != null)
+                          Text('Paid: ${s.paymentDate}', style: const TextStyle(color: AppColors.textDim, fontSize: 11)),
+                        if (s.disbursementReference != null)
+                          Text('Ref: ${s.disbursementReference}', style: const TextStyle(color: AppColors.textDim, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -384,7 +494,9 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
             child: Column(
               children: [
                 _buildRow(
-                  isDaily ? 'Basic Wage (₹${s.baseRate} × ${s.payableDays} days)' : 'Monthly Basic Salary',
+                  isDaily
+                      ? 'Basic Wage (₹${s.baseRate} × ${s.payableDays} days)'
+                      : 'Monthly Basic Salary (Cap: ₹${s.monthlySalaryCap ?? s.baseRate})',
                   '₹${NumberFormat('#,##,##0.00').format(s.basicSalary)}',
                 ),
                 if (s.incentiveSalary > 0) ...[
@@ -396,17 +508,17 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
                   _buildRow('Approved Overtime (${s.overtimeHours} hrs)', '+ ₹${NumberFormat('#,##,##0.00').format(s.overtimeAmount)}', color: AppColors.success),
                 ],
                 const Divider(color: Colors.white24),
-                _buildRow('Gross Salary', '₹${NumberFormat('#,##,##0.00').format(s.grossSalary)}', isBold: true),
+                _buildRow('Gross Salary (Capped)', '₹${NumberFormat('#,##,##0.00').format(s.grossSalary)}', isBold: true),
                 const Divider(color: Colors.white24),
                 if (isDaily) ...[
                   _buildRow('Employee EPF (12%)', '- ₹${NumberFormat('#,##,##0.00').format(s.employeeEpf)}', color: AppColors.error),
                   const Divider(color: Colors.white12),
                   _buildRow('Employee ESIC (0.75%)', '- ₹${NumberFormat('#,##,##0.00').format(s.employeeEsic)}', color: AppColors.error),
                 ] else ...[
-                  _buildRow('Gratuity (5% of Original Basic)', '- ₹${NumberFormat('#,##,##0.00').format(s.gratuityDeduction)}', color: AppColors.error),
+                  _buildRow('Company 5% Deduction', '- ₹${NumberFormat('#,##,##0.00').format(s.gratuityDeduction)}', color: AppColors.error),
                 ],
                 const Divider(color: Colors.white24),
-                _buildRow('Net Take-Home Salary', '₹${NumberFormat('#,##,##0.00').format(s.netSalary)}', isBold: true, color: AppColors.success),
+                _buildRow('Net Payable Salary', '₹${NumberFormat('#,##,##0.00').format(s.netSalary)}', isBold: true, color: AppColors.success),
               ],
             ),
           ),
@@ -643,17 +755,35 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    item.payrollPeriod,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.cycleCode.isNotEmpty ? item.cycleCode : item.payrollPeriod,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                      if (item.cycleStartDate.isNotEmpty && item.cycleEndDate.isNotEmpty)
+                        Text(
+                          '${item.cycleStartDate} ~ ${item.cycleEndDate}',
+                          style: const TextStyle(color: AppColors.textDim, fontSize: 11),
+                        ),
+                    ],
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.success.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(10),
+                      color: _getStatusColor(_getStatusText(item)).withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _getStatusColor(_getStatusText(item)).withOpacity(0.5)),
                     ),
-                    child: const Text('FINALIZED', style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      _getStatusText(item),
+                      style: TextStyle(
+                        color: _getStatusColor(_getStatusText(item)),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -684,6 +814,23 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
                   ),
                 ],
               ),
+              if (item.amountDisbursed > 0 || item.remainingPayable > 0 || item.disbursementReference != null) ...[
+                const Divider(color: Colors.white12, height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Paid: ₹${item.amountDisbursed.toStringAsFixed(0)}', style: const TextStyle(color: AppColors.textDim, fontSize: 11)),
+                    Text(
+                      'Remaining: ₹${item.remainingPayable.toStringAsFixed(0)}',
+                      style: TextStyle(color: item.remainingPayable > 0 ? Colors.amberAccent : AppColors.textDim, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                if (item.disbursementReference != null) ...[
+                  const SizedBox(height: 4),
+                  Text('Disbursement Ref: ${item.disbursementReference}', style: const TextStyle(color: AppColors.textDim, fontSize: 10)),
+                ],
+              ],
             ],
           ),
         );

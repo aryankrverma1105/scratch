@@ -23,6 +23,10 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
   bool _isFinalized = false;
   String? _finalizedAt;
 
+  SalaryCycleModel? _activeCycle;
+  List<SalaryCycleModel> _cycles = [];
+  SalaryCycleModel? _selectedCycle;
+
   List<DailyIncentiveModel> _incentives = [];
   List<OvertimeRecordModel> _overtimes = [];
 
@@ -53,7 +57,26 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
     try {
       final settings = await ApiService().getSalarySettings();
       final configs = await ApiService().getEmployeeSalaryConfigs();
-      final preview = await ApiService().previewPayroll(month: _monthStr);
+      final cycles = await ApiService().listSalaryCycles();
+      final activeCycle = await ApiService().getActiveSalaryCycle();
+      
+      SalaryCycleModel? currentCycle = _selectedCycle;
+      if (currentCycle != null) {
+        // verify it still exists in the fetched cycles
+        final found = cycles.where((c) => c.cycleCode == currentCycle!.cycleCode).toList();
+        if (found.isNotEmpty) {
+          currentCycle = found.first;
+        } else {
+          currentCycle = activeCycle ?? (cycles.isNotEmpty ? cycles.first : null);
+        }
+      } else {
+        currentCycle = activeCycle ?? (cycles.isNotEmpty ? cycles.first : null);
+      }
+
+      final preview = await ApiService().previewPayroll(
+        cycleCode: currentCycle?.cycleCode,
+        month: currentCycle == null ? _monthStr : null,
+      );
       final incentives = await ApiService().getAdminIncentives(month: _monthStr);
       final overtimes = await ApiService().getAdminOvertime(month: _monthStr);
 
@@ -62,6 +85,9 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
           _settings = settings;
           _commonWageController.text = settings.commonDailyWage.toStringAsFixed(0);
           _configs = configs;
+          _cycles = cycles;
+          _activeCycle = activeCycle;
+          _selectedCycle = currentCycle;
           _calculations = (preview['calculations'] as List? ?? []).cast<SalaryCalculationModel>();
           _isFinalized = preview['isFinalized'] ?? false;
           _finalizedAt = preview['finalizedAt']?.toString();
@@ -80,9 +106,18 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
     }
   }
 
+  void _onCycleChanged(SalaryCycleModel? cycle) {
+    if (cycle == null || cycle.cycleCode == _selectedCycle?.cycleCode) return;
+    setState(() {
+      _selectedCycle = cycle;
+    });
+    _loadAllData();
+  }
+
   void _changeMonth(int offset) {
     setState(() {
       _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + offset, 1);
+      _selectedCycle = null;
     });
     _loadAllData();
   }
@@ -134,7 +169,7 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Are you sure you want to finalize payroll for $_monthStr? Once locked, calculations become immutable and serve as official payslips.',
+              'Are you sure you want to finalize payroll for ${_selectedCycle?.cycleCode ?? _monthStr}? Once locked, calculations become immutable and serve as official payslips.',
               style: const TextStyle(color: AppColors.textDim, fontSize: 13),
             ),
             const SizedBox(height: 14),
@@ -164,7 +199,11 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
 
     if (confirm == true) {
       try {
-        await ApiService().finalizePayroll(month: _monthStr, notes: notesController.text.trim());
+        await ApiService().finalizePayroll(
+          cycleCode: _selectedCycle?.cycleCode,
+          month: _selectedCycle == null ? _monthStr : null,
+          notes: notesController.text.trim(),
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(backgroundColor: AppColors.success, content: Text('Payroll finalized and locked successfully')),
@@ -181,9 +220,415 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
     }
   }
 
+  Future<void> _showDisburseAndAdvanceDialog() async {
+    final cycle = _selectedCycle ?? _activeCycle;
+    if (cycle == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(backgroundColor: AppColors.error, content: Text('No active salary cycle found.')),
+      );
+      return;
+    }
+
+    final totalGross = _calculations.fold<double>(0.0, (sum, c) => sum + c.grossSalary);
+    final totalNet = _calculations.fold<double>(0.0, (sum, c) => sum + c.netSalary);
+    final totalDeductions = totalGross - totalNet;
+    final totalDisbursedSoFar = _calculations.fold<double>(0.0, (sum, c) => sum + c.amountDisbursed);
+    final remainingPayable = (totalNet - totalDisbursedSoFar) > 0 ? (totalNet - totalDisbursedSoFar) : 0.0;
+    final employeeCount = _calculations.length;
+
+    // Propose next cycle start date (day after current cycle end date)
+    String proposedNextStartDate = 'Next 3rd';
+    try {
+      final endDt = DateTime.parse(cycle.endDate);
+      final nextDt = endDt.add(const Duration(days: 1));
+      proposedNextStartDate = DateFormat('yyyy-MM-dd').format(nextDt);
+    } catch (_) {}
+
+    DateTime paymentDate = DateTime.now();
+    final amountController = TextEditingController(text: remainingPayable > 0 ? remainingPayable.toStringAsFixed(2) : '0.00');
+    final notesController = TextEditingController();
+    String disbursementMethod = 'bank_transfer';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return AlertDialog(
+            backgroundColor: AppColors.cardDark,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(
+              children: [
+                Icon(Icons.payments_outlined, color: AppColors.success, size: 24),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Record Disbursement & Start Next Cycle',
+                    style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Cycle details
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          _buildDetailRow('Current Cycle', cycle.cycleCode),
+                          _buildDetailRow('Cycle Period', '${cycle.startDate} to ${cycle.endDate}'),
+                          _buildDetailRow('Employees Included', '$employeeCount staff'),
+                          _buildDetailRow('Proposed Next Cycle', proposedNextStartDate, color: Colors.cyanAccent),
+                          const Divider(color: Colors.white12, height: 16),
+                          _buildDetailRow('Eligible Gross Salary', '₹${NumberFormat('#,##,##0.00').format(totalGross)}'),
+                          _buildDetailRow('Total Employee Deductions', '₹${NumberFormat('#,##,##0.00').format(totalDeductions)}', color: AppColors.error),
+                          _buildDetailRow('Total Net Payable', '₹${NumberFormat('#,##,##0.00').format(totalNet)}', isBold: true, color: Colors.white),
+                          _buildDetailRow('Already Disbursed', '₹${NumberFormat('#,##,##0.00').format(totalDisbursedSoFar)}'),
+                          _buildDetailRow('Remaining Net Payable', '₹${NumberFormat('#,##,##0.00').format(remainingPayable)}', isBold: true, color: AppColors.success),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Warning notice
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.warning.withOpacity(0.4)),
+                      ),
+                      child: const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: AppColors.warning, size: 20),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Warning: Finalized payroll cannot be silently overwritten. Confirming this action creates a permanent snapshot, records disbursement, and starts the next cycle with ₹0 starting earnings.',
+                              style: TextStyle(color: AppColors.warning, fontSize: 11.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Payment Date picker
+                    const Text('Actual Payment Date', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: paymentDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2035),
+                        );
+                        if (picked != null) {
+                          setModalState(() => paymentDate = picked);
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.inputDark,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(DateFormat('yyyy-MM-dd').format(paymentDate), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            const Icon(Icons.calendar_today, color: AppColors.info, size: 18),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Amount controller
+                    const Text('Disbursement Amount (₹)', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: amountController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      decoration: InputDecoration(
+                        hintText: 'Enter amount disbursed',
+                        hintStyle: const TextStyle(color: AppColors.textMuted),
+                        filled: true,
+                        fillColor: AppColors.inputDark,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Disbursement Method
+                    const Text('Disbursement Method', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: AppColors.inputDark,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: disbursementMethod,
+                          dropdownColor: AppColors.cardDark,
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(value: 'bank_transfer', child: Text('Bank Transfer (NEFT/RTGS/IMPS)', style: TextStyle(color: Colors.white, fontSize: 13))),
+                            DropdownMenuItem(value: 'upi', child: Text('UPI Payment', style: TextStyle(color: Colors.white, fontSize: 13))),
+                            DropdownMenuItem(value: 'cheque', child: Text('Cheque', style: TextStyle(color: Colors.white, fontSize: 13))),
+                            DropdownMenuItem(value: 'cash', child: Text('Cash', style: TextStyle(color: Colors.white, fontSize: 13))),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) setModalState(() => disbursementMethod = val);
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Notes
+                    const Text('Disbursement Notes / Reference', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: notesController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'e.g. Bank Batch Ref / Transaction ID...',
+                        hintStyle: const TextStyle(color: AppColors.textMuted),
+                        filled: true,
+                        fillColor: AppColors.inputDark,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+              ),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () => Navigator.pop(ctx, true),
+                icon: const Icon(Icons.check_circle_outline, size: 18),
+                label: const Text('Confirm & Start Next Cycle', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (confirmed == true) {
+      final amt = double.tryParse(amountController.text.trim()) ?? remainingPayable;
+      final dateStr = DateFormat('yyyy-MM-dd').format(paymentDate);
+
+      try {
+        final res = await ApiService().disburseAndAdvanceCycle(
+          cycleCode: cycle.cycleCode,
+          paymentDate: dateStr,
+          totalDisbursed: amt,
+          disbursementMethod: disbursementMethod,
+          notes: notesController.text.trim(),
+        );
+
+        if (mounted) {
+          final batchRef = res['batch']?['batchReference'] ?? 'REF';
+          final nextCode = res['nextCycle']?['cycleCode'] ?? 'Next';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: AppColors.success,
+              content: Text('Disbursement recorded (Ref: $batchRef). Next cycle $nextCode started with ₹0 opening balance.'),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        _selectedCycle = null;
+        _loadAllData();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(backgroundColor: AppColors.error, content: Text(e.toString())),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _recordEmployeePaymentDialog(SalaryCalculationModel c) async {
+    final cycle = _selectedCycle ?? _activeCycle;
+    if (cycle == null) return;
+
+    final amountController = TextEditingController(text: c.remainingPayable.toStringAsFixed(2));
+    final remarksController = TextEditingController();
+    DateTime paymentDate = DateTime.now();
+    String paymentMethod = 'bank_transfer';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Record Payment: ${c.fullName}', style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildDetailRow('Cycle', cycle.cycleCode),
+                _buildDetailRow('Net Payable', '₹${NumberFormat('#,##,##0.00').format(c.netSalary)}'),
+                _buildDetailRow('Already Paid', '₹${NumberFormat('#,##,##0.00').format(c.amountDisbursed)}'),
+                _buildDetailRow('Remaining Balance', '₹${NumberFormat('#,##,##0.00').format(c.remainingPayable)}', isBold: true, color: AppColors.warning),
+                const Divider(color: Colors.white12, height: 20),
+                const Text('Payment Date', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: paymentDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2035),
+                    );
+                    if (picked != null) {
+                      setModalState(() => paymentDate = picked);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(color: AppColors.inputDark, borderRadius: BorderRadius.circular(12)),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(DateFormat('yyyy-MM-dd').format(paymentDate), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        const Icon(Icons.calendar_today, color: AppColors.info, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Amount to Pay (₹)', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: AppColors.inputDark,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Payment Method', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(color: AppColors.inputDark, borderRadius: BorderRadius.circular(12)),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: paymentMethod,
+                      dropdownColor: AppColors.cardDark,
+                      isExpanded: true,
+                      items: const [
+                        DropdownMenuItem(value: 'bank_transfer', child: Text('Bank Transfer', style: TextStyle(color: Colors.white, fontSize: 13))),
+                        DropdownMenuItem(value: 'upi', child: Text('UPI', style: TextStyle(color: Colors.white, fontSize: 13))),
+                        DropdownMenuItem(value: 'cheque', child: Text('Cheque', style: TextStyle(color: Colors.white, fontSize: 13))),
+                        DropdownMenuItem(value: 'cash', child: Text('Cash', style: TextStyle(color: Colors.white, fontSize: 13))),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setModalState(() => paymentMethod = val);
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Remarks / Transaction Ref', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: remarksController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'e.g. UTR / Receipt No.',
+                    hintStyle: const TextStyle(color: AppColors.textMuted),
+                    filled: true,
+                    fillColor: AppColors.inputDark,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Record Payment', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true) {
+      final amt = double.tryParse(amountController.text.trim()) ?? 0.0;
+      if (amt <= 0) return;
+      try {
+        final dateStr = DateFormat('yyyy-MM-dd').format(paymentDate);
+        await ApiService().recordAdditionalPayment(
+          cycleCode: cycle.cycleCode,
+          userId: c.userId,
+          amount: amt,
+          paymentDate: dateStr,
+          paymentMethod: paymentMethod,
+          remarks: remarksController.text.trim(),
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(backgroundColor: AppColors.success, content: Text('Employee payment recorded successfully')),
+          );
+        }
+        _loadAllData();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(backgroundColor: AppColors.error, content: Text(e.toString())),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _exportCsvDialog() async {
     try {
-      final csv = await ApiService().exportPayrollCsv(month: _monthStr);
+      final csv = await ApiService().exportPayrollCsv(
+        cycleCode: _selectedCycle?.cycleCode,
+        month: _selectedCycle == null ? _monthStr : null,
+      );
       if (!mounted) return;
       showDialog(
         context: context,
@@ -386,11 +831,109 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
   Widget _buildPayrollTab() {
     final totalNet = _calculations.fold<double>(0.0, (sum, c) => sum + c.netSalary);
     final totalGross = _calculations.fold<double>(0.0, (sum, c) => sum + c.grossSalary);
-    final totalCtc = _calculations.fold<double>(0.0, (sum, c) => sum + c.ctc);
+    final totalDisbursedSoFar = _calculations.fold<double>(0.0, (sum, c) => sum + c.amountDisbursed);
+    final remainingLiability = (totalNet - totalDisbursedSoFar) > 0 ? (totalNet - totalDisbursedSoFar) : 0.0;
+    final currentCycle = _selectedCycle ?? _activeCycle;
 
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
+        // Cycle Selection & Information Banner
+        Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.cardDark,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.info.withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.sync_alt, color: AppColors.info, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        currentCycle != null ? 'Cycle: ${currentCycle.cycleCode}' : 'Monthly Cycle',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: (currentCycle?.status == 'paid'
+                              ? AppColors.success
+                              : currentCycle?.status == 'partially_paid'
+                                  ? Colors.orange
+                                  : currentCycle?.status == 'closed_unpaid'
+                                      ? AppColors.error
+                                      : AppColors.info)
+                          .withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      (currentCycle?.status ?? 'active').toUpperCase(),
+                      style: TextStyle(
+                        color: currentCycle?.status == 'paid'
+                            ? AppColors.success
+                            : currentCycle?.status == 'partially_paid'
+                                ? Colors.orange
+                                : currentCycle?.status == 'closed_unpaid'
+                                    ? AppColors.error
+                                    : AppColors.info,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                currentCycle != null
+                    ? 'Period: ${currentCycle.startDate} to ${currentCycle.endDate} (Monthly boundary on 3rd at 00:00 IST)'
+                    : 'Salary Cycle Period (Monthly boundary on 3rd at 00:00 IST)',
+                style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+              ),
+              if (_cycles.length > 1) ...[
+                const SizedBox(height: 10),
+                DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: currentCycle?.cycleCode,
+                    dropdownColor: AppColors.cardDark,
+                    isDense: true,
+                    isExpanded: true,
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    items: _cycles.map((cy) {
+                      return DropdownMenuItem<String>(
+                        value: cy.cycleCode,
+                        child: Text(
+                          '${cy.cycleCode} (${cy.startDate} ~ ${cy.endDate}) [${cy.status.toUpperCase()}]',
+                          style: TextStyle(
+                            color: cy.cycleCode == _activeCycle?.cycleCode ? Colors.cyanAccent : Colors.white70,
+                            fontWeight: cy.cycleCode == _activeCycle?.cycleCode ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (selectedCode) {
+                      if (selectedCode != null) {
+                        final found = _cycles.where((c) => c.cycleCode == selectedCode).toList();
+                        if (found.isNotEmpty) _onCycleChanged(found.first);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
         // Summary & Status Card
         Container(
           padding: const EdgeInsets.all(18),
@@ -430,11 +973,11 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                           side: const BorderSide(color: Colors.white38),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         ),
                         onPressed: _exportCsvDialog,
-                        icon: const Icon(Icons.table_view, size: 16),
-                        label: const Text('Export CSV', style: TextStyle(fontSize: 12)),
+                        icon: const Icon(Icons.table_view, size: 15),
+                        label: const Text('Export CSV', style: TextStyle(fontSize: 11)),
                       ),
                       if (!_isFinalized) ...[
                         const SizedBox(width: 8),
@@ -442,11 +985,11 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.warning,
                             foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                           ),
                           onPressed: _finalizePayrollDialog,
-                          icon: const Icon(Icons.lock, size: 16),
-                          label: const Text('Finalize', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          icon: const Icon(Icons.lock, size: 15),
+                          label: const Text('Finalize', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ],
@@ -476,18 +1019,69 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Total CTC Cost', style: TextStyle(color: Colors.white60, fontSize: 11)),
-                      Text('₹${NumberFormat('#,##,##0').format(totalCtc)}', style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold)),
+                      const Text('Total Disbursed', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                      Text('₹${NumberFormat('#,##,##0').format(totalDisbursedSoFar)}', style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      const Text('Employees', style: TextStyle(color: Colors.white60, fontSize: 11)),
-                      Text('${_calculations.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      const Text('Remaining Payable', style: TextStyle(color: Colors.white60, fontSize: 11)),
+                      Text('₹${NumberFormat('#,##,##0').format(remainingLiability)}', style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ],
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Record Salary Disbursement & Reset Cycle Action Card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFF064E3B).withOpacity(0.4),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFF10B981).withOpacity(0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.account_balance_wallet, color: AppColors.success, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'Salary Disbursement & Cycle Management',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Record payments, snapshot current payroll immutably, and advance to the next salary cycle with ₹0 opening earnings.',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.success,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 3,
+                  ),
+                  onPressed: _showDisburseAndAdvanceDialog,
+                  icon: const Icon(Icons.playlist_add_check_circle_outlined, size: 20),
+                  label: const Text(
+                    'Record Salary Disbursement & Start Next Cycle',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                ),
               ),
             ],
           ),
@@ -499,6 +1093,10 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
 
         ..._calculations.map((c) {
           final isDaily = c.salaryType == 'daily_wage';
+          final paymentStatus = c.paymentStatus.isNotEmpty ? c.paymentStatus : (c.isFinalized ? 'finalized' : 'draft');
+          final isPaid = paymentStatus == 'paid';
+          final isPartiallyPaid = paymentStatus == 'partially_paid';
+
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
@@ -520,17 +1118,50 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: isDaily ? Colors.amber.withOpacity(0.15) : Colors.cyan.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: isDaily ? Colors.amber : Colors.cyan),
-                        ),
-                        child: Text(
-                          isDaily ? 'DAILY WAGE' : 'FIXED MONTHLY',
-                          style: TextStyle(color: isDaily ? Colors.amber : Colors.cyan, fontSize: 9.5, fontWeight: FontWeight.bold),
-                        ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: isDaily ? Colors.amber.withOpacity(0.15) : Colors.cyan.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: isDaily ? Colors.amber : Colors.cyan),
+                            ),
+                            child: Text(
+                              isDaily ? 'DAILY WAGE' : 'FIXED MONTHLY',
+                              style: TextStyle(color: isDaily ? Colors.amber : Colors.cyan, fontSize: 9.5, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: (isPaid
+                                      ? AppColors.success
+                                      : isPartiallyPaid
+                                          ? Colors.orange
+                                          : c.isFinalized
+                                              ? Colors.blue
+                                              : Colors.grey)
+                                  .withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              paymentStatus.replaceAll('_', ' ').toUpperCase(),
+                              style: TextStyle(
+                                color: isPaid
+                                    ? AppColors.success
+                                    : isPartiallyPaid
+                                        ? Colors.orange
+                                        : c.isFinalized
+                                            ? Colors.lightBlueAccent
+                                            : Colors.grey,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -566,6 +1197,19 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
                       ),
                     ],
                   ),
+                  if (c.amountDisbursed > 0 || c.remainingPayable > 0) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Paid: ₹${c.amountDisbursed.toStringAsFixed(0)}', style: const TextStyle(color: AppColors.textDim, fontSize: 11)),
+                        Text(
+                          'Remaining: ₹${c.remainingPayable.toStringAsFixed(0)}',
+                          style: TextStyle(color: c.remainingPayable > 0 ? Colors.amberAccent : AppColors.textDim, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -602,7 +1246,10 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
             _buildDetailRow('Payable Days', '${c.payableDays} days'),
             _buildDetailRow('Absent Days', '${c.absentDays} days'),
             const Divider(color: Colors.white12, height: 16),
-            _buildDetailRow('Basic Salary', '₹${NumberFormat('#,##,##0.00').format(c.basicSalary)}'),
+            _buildDetailRow(
+              isDaily ? 'Basic Wage (₹${c.baseRate} × ${c.payableDays})' : 'Monthly Basic Salary (Cap: ₹${c.monthlySalaryCap ?? c.baseRate})',
+              '₹${NumberFormat('#,##,##0.00').format(c.basicSalary)}',
+            ),
             if (c.incentiveSalary > 0) _buildDetailRow('Daily Incentives', '+ ₹${NumberFormat('#,##,##0.00').format(c.incentiveSalary)}', color: AppColors.success),
             if (c.overtimeAmount > 0) _buildDetailRow('Approved Overtime', '+ ₹${NumberFormat('#,##,##0.00').format(c.overtimeAmount)}', color: AppColors.success),
             _buildDetailRow('Gross Salary', '₹${NumberFormat('#,##,##0.00').format(c.grossSalary)}', isBold: true),
@@ -611,15 +1258,40 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
               _buildDetailRow('Employee EPF (12%)', '- ₹${NumberFormat('#,##,##0.00').format(c.employeeEpf)}', color: AppColors.error),
               _buildDetailRow('Employee ESIC (0.75%)', '- ₹${NumberFormat('#,##,##0.00').format(c.employeeEsic)}', color: AppColors.error),
             ] else ...[
-              _buildDetailRow('Company 5% Deduction (Gratuity)', '- ₹${NumberFormat('#,##,##0.00').format(c.gratuityDeduction)}', color: AppColors.error),
+              _buildDetailRow('Company 5% Deduction', '- ₹${NumberFormat('#,##,##0.00').format(c.gratuityDeduction)}', color: AppColors.error),
             ],
             const Divider(color: Colors.white24, height: 20),
             _buildDetailRow('Net Payable Salary', '₹${NumberFormat('#,##,##0.00').format(c.netSalary)}', isBold: true, color: AppColors.success),
+            const Divider(color: Colors.white12, height: 16),
+            _buildDetailRow('Payment Status', c.paymentStatus.replaceAll('_', ' ').toUpperCase(), color: c.paymentStatus == 'paid' ? AppColors.success : (c.paymentStatus == 'partially_paid' ? Colors.orange : Colors.white70)),
+            _buildDetailRow('Amount Disbursed', '₹${NumberFormat('#,##,##0.00').format(c.amountDisbursed)}'),
+            _buildDetailRow('Remaining Balance', '₹${NumberFormat('#,##,##0.00').format(c.remainingPayable)}', isBold: true, color: c.remainingPayable > 0 ? AppColors.warning : AppColors.success),
+            if (c.paymentDate != null) _buildDetailRow('Payment Date', c.paymentDate!),
+            if (c.disbursementReference != null) _buildDetailRow('Disbursement Ref', c.disbursementReference!),
             if (isDaily) ...[
               const Divider(color: Colors.white12, height: 16),
               _buildDetailRow('Employer EPF (12%)', '₹${NumberFormat('#,##,##0.00').format(c.employerEpf)}'),
               _buildDetailRow('Employer ESIC (3.25%)', '₹${NumberFormat('#,##,##0.00').format(c.employerEsic)}'),
               _buildDetailRow('Total CTC', '₹${NumberFormat('#,##,##0.00').format(c.ctc)}', isBold: true, color: Colors.cyanAccent),
+            ],
+            if (c.remainingPayable > 0) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.success,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _recordEmployeePaymentDialog(c);
+                  },
+                  icon: const Icon(Icons.payment, size: 18),
+                  label: const Text('Record Individual / Partial Payment', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
             ],
             const SizedBox(height: 16),
           ],
@@ -645,6 +1317,39 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
+        // System Start Date & Cycle Policy Banner
+        Container(
+          margin: const EdgeInsets.only(bottom: 18),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E293B),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.cyan.withOpacity(0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.verified_outlined, color: Colors.cyanAccent, size: 22),
+                  SizedBox(width: 8),
+                  Text('Official Salary System Rules', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _buildDetailRow('Official Start Date', _settings?.officialStartDate ?? '2026-11-03', color: Colors.cyanAccent, isBold: true),
+              _buildDetailRow('Cycle Boundary', '3rd of every month at 00:00 IST', color: Colors.white70),
+              _buildDetailRow('Zero-Balance Fresh Start', 'Strict zero opening accrued balance', color: AppColors.success),
+              _buildDetailRow('Fixed Monthly Salary Cap', 'Gross never exceeds configured basic salary', color: Colors.amberAccent),
+              const SizedBox(height: 6),
+              const Text(
+                'Attendance and earnings prior to 3 November 2026 are excluded from payroll calculations. Historical records, leaves, selfies and audit logs remain fully preserved.',
+                style: TextStyle(color: AppColors.textDim, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+
         // Common Daily Wage Card
         Container(
           padding: const EdgeInsets.all(18),

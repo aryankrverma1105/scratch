@@ -939,15 +939,17 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> previewPayroll({String? month}) async {
+  Future<Map<String, dynamic>> previewPayroll({String? month, String? cycleCode}) async {
     try {
       final params = <String, dynamic>{};
       if (month != null) params['month'] = month;
+      if (cycleCode != null) params['cycleCode'] = cycleCode;
       final response = await _dio.get('/api/salary/admin/payroll/preview', queryParameters: params);
       final list = (response.data['calculations'] as List? ?? []);
       final calculations = list.map((c) => SalaryCalculationModel.fromJson(c)).toList();
       return {
         'month': response.data['month'],
+        'cycleCode': response.data['cycleCode'],
         'isFinalized': response.data['isFinalized'] ?? false,
         'finalizedAt': response.data['finalizedAt'],
         'calculations': calculations,
@@ -957,21 +959,23 @@ class ApiService {
     }
   }
 
-  Future<void> finalizePayroll({required String month, String? notes}) async {
+  Future<void> finalizePayroll({String? month, String? cycleCode, String? notes}) async {
     try {
-      await _dio.post('/api/salary/admin/payroll/finalize', data: {
-        'month': month,
-        'notes': notes,
-      });
+      final data = <String, dynamic>{};
+      if (month != null) data['month'] = month;
+      if (cycleCode != null) data['cycleCode'] = cycleCode;
+      if (notes != null) data['notes'] = notes;
+      await _dio.post('/api/salary/admin/payroll/finalize', data: data);
     } on DioException catch (e) {
       throw Exception(e.response?.data?['error'] ?? 'Failed to finalize payroll');
     }
   }
 
-  Future<String> exportPayrollCsv({String? month}) async {
+  Future<String> exportPayrollCsv({String? month, String? cycleCode}) async {
     try {
       final params = <String, dynamic>{};
       if (month != null) params['month'] = month;
+      if (cycleCode != null) params['cycleCode'] = cycleCode;
       final response = await _dio.get(
         '/api/salary/admin/payroll/export',
         queryParameters: params,
@@ -983,10 +987,87 @@ class ApiService {
     }
   }
 
-  Future<SalaryCalculationModel> getMySalary({String? month}) async {
+  // --- Salary Cycles & Disbursement Batch APIs ---
+
+  Future<SalaryCycleModel?> getActiveSalaryCycle() async {
+    try {
+      final response = await _dio.get('/api/salary/admin/cycles/active');
+      if (response.data['cycle'] != null) {
+        return SalaryCycleModel.fromJson(response.data['cycle']);
+      }
+      return null;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch active cycle');
+    }
+  }
+
+  Future<List<SalaryCycleModel>> listSalaryCycles() async {
+    try {
+      final response = await _dio.get('/api/salary/admin/cycles');
+      final list = (response.data['cycles'] as List? ?? []);
+      return list.map((c) => SalaryCycleModel.fromJson(c)).toList();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch salary cycles');
+    }
+  }
+
+  Future<Map<String, dynamic>> getSalaryCycleDetails(String cycleCode) async {
+    try {
+      final response = await _dio.get('/api/salary/admin/cycles/$cycleCode');
+      return response.data;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch cycle details');
+    }
+  }
+
+  Future<Map<String, dynamic>> disburseAndAdvanceCycle({
+    required String cycleCode,
+    required String paymentDate,
+    required double totalDisbursed,
+    String? disbursementMethod,
+    String? notes,
+  }) async {
+    try {
+      final response = await _dio.post('/api/salary/admin/cycles/disburse-and-advance', data: {
+        'cycleCode': cycleCode,
+        'paymentDate': paymentDate,
+        'totalDisbursed': totalDisbursed,
+        'disbursementMethod': disbursementMethod ?? 'bank_transfer',
+        'notes': notes,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to record disbursement and advance cycle');
+    }
+  }
+
+  Future<Map<String, dynamic>> recordAdditionalPayment({
+    required String cycleCode,
+    required int userId,
+    required double amount,
+    required String paymentDate,
+    String? paymentMethod,
+    String? remarks,
+  }) async {
+    try {
+      final response = await _dio.post('/api/salary/admin/cycles/$cycleCode/record-payment', data: {
+        'userId': userId,
+        'amount': amount,
+        'paymentDate': paymentDate,
+        'paymentMethod': paymentMethod ?? 'bank_transfer',
+        'remarks': remarks,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to record additional payment');
+    }
+  }
+
+  Future<SalaryCalculationModel> getMySalary({String? month, String? cycleCode}) async {
     try {
       final params = <String, dynamic>{};
       if (month != null) params['month'] = month;
+      if (cycleCode != null) params['cycleCode'] = cycleCode;
       final response = await _dio.get('/api/salary/my-salary', queryParameters: params);
       return SalaryCalculationModel.fromJson(response.data['salary']);
     } on DioException catch (e) {

@@ -1,9 +1,13 @@
 class SalarySettingsModel {
   final double commonDailyWage;
+  final String officialStartDate;
+  final int cycleStartDay;
   final String? updatedAt;
 
   SalarySettingsModel({
     required this.commonDailyWage,
+    this.officialStartDate = '2026-11-03',
+    this.cycleStartDay = 3,
     this.updatedAt,
   });
 
@@ -12,7 +16,200 @@ class SalarySettingsModel {
       commonDailyWage: (json['common_daily_wage'] is num)
           ? (json['common_daily_wage'] as num).toDouble()
           : double.tryParse(json['common_daily_wage']?.toString() ?? '0') ?? 0.0,
+      officialStartDate: json['official_start_date']?.toString() ?? '2026-11-03',
+      cycleStartDay: json['cycle_start_day'] is int
+          ? json['cycle_start_day']
+          : int.tryParse(json['cycle_start_day']?.toString() ?? '3') ?? 3,
       updatedAt: json['updated_at']?.toString(),
+    );
+  }
+}
+
+class SalaryCycleModel {
+  final int? id;
+  final String cycleCode;
+  final String startDate;
+  final String endDate;
+  final String status; // 'active' | 'review_required' | 'finalized' | 'partially_paid' | 'paid' | 'closed_unpaid'
+  final double totalGross;
+  final double totalDeductions;
+  final double totalNet;
+  final double totalDisbursed;
+  final double remainingPayable;
+  final int employeeCount;
+  final String? finalizedAt;
+  final String? closedAt;
+  final String? notes;
+
+  SalaryCycleModel({
+    this.id,
+    required this.cycleCode,
+    required this.startDate,
+    required this.endDate,
+    required this.status,
+    this.totalGross = 0.0,
+    this.totalDeductions = 0.0,
+    this.totalNet = 0.0,
+    this.totalDisbursed = 0.0,
+    this.remainingPayable = 0.0,
+    this.employeeCount = 0,
+    this.finalizedAt,
+    this.closedAt,
+    this.notes,
+  });
+
+  String get dateRangeLabel => '$startDate to $endDate';
+
+  factory SalaryCycleModel.fromJson(Map<String, dynamic> json) {
+    double toDbl(dynamic val) {
+      if (val == null) return 0.0;
+      if (val is num) return val.toDouble();
+      return double.tryParse(val.toString()) ?? 0.0;
+    }
+
+    return SalaryCycleModel(
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? ''),
+      cycleCode: json['cycle_code']?.toString() ?? json['cycleCode']?.toString() ?? '',
+      startDate: json['start_date']?.toString() ?? json['startDate']?.toString() ?? '',
+      endDate: json['end_date']?.toString() ?? json['endDate']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'active',
+      totalGross: toDbl(json['total_gross'] ?? json['totalGross']),
+      totalDeductions: toDbl(json['total_deductions'] ?? json['totalDeductions']),
+      totalNet: toDbl(json['total_net'] ?? json['totalNet']),
+      totalDisbursed: toDbl(json['total_disbursed'] ?? json['totalDisbursed']),
+      remainingPayable: toDbl(json['remaining_payable'] ?? json['remainingPayable']),
+      employeeCount: json['employee_count'] is int
+          ? json['employee_count']
+          : int.tryParse((json['employee_count'] ?? json['employeeCount'])?.toString() ?? '0') ?? 0,
+      finalizedAt: json['finalized_at']?.toString() ?? json['finalizedAt']?.toString(),
+      closedAt: json['closed_at']?.toString() ?? json['closedAt']?.toString(),
+      notes: json['notes']?.toString(),
+    );
+  }
+}
+
+class SalaryDisbursementBatchModel {
+  final int id;
+  final String batchReference;
+  final int cycleId;
+  final String cycleCode;
+  final String disbursementDate;
+  final double totalAmount;
+  final int employeeCount;
+  final String paymentMethod;
+  final String? disbursedByName;
+  final String? notes;
+  final DateTime createdAt;
+
+  SalaryDisbursementBatchModel({
+    required this.id,
+    required this.batchReference,
+    required this.cycleId,
+    required this.cycleCode,
+    required this.disbursementDate,
+    required this.totalAmount,
+    required this.employeeCount,
+    required this.paymentMethod,
+    this.disbursedByName,
+    this.notes,
+    required this.createdAt,
+  });
+
+  factory SalaryDisbursementBatchModel.fromJson(Map<String, dynamic> json) {
+    DateTime parseDt(dynamic val) {
+      if (val == null) return DateTime.now();
+      String s = val.toString().trim();
+      if (!s.endsWith('Z') && !s.contains('+')) s = '${s}Z';
+      return (DateTime.tryParse(s) ?? DateTime.now()).toLocal();
+    }
+
+    double toDbl(dynamic val) {
+      if (val == null) return 0.0;
+      if (val is num) return val.toDouble();
+      return double.tryParse(val.toString()) ?? 0.0;
+    }
+
+    return SalaryDisbursementBatchModel(
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      batchReference: json['batch_reference']?.toString() ?? '',
+      cycleId: json['cycle_id'] is int ? json['cycle_id'] : int.tryParse(json['cycle_id']?.toString() ?? '0') ?? 0,
+      cycleCode: json['cycle_code']?.toString() ?? '',
+      disbursementDate: json['disbursement_date']?.toString() ?? '',
+      totalAmount: toDbl(json['total_amount']),
+      employeeCount: json['employee_count'] is int ? json['employee_count'] : int.tryParse(json['employee_count']?.toString() ?? '0') ?? 0,
+      paymentMethod: json['payment_method']?.toString() ?? 'bank_transfer',
+      disbursedByName: json['disbursed_by_name']?.toString(),
+      notes: json['notes']?.toString(),
+      createdAt: parseDt(json['created_at']),
+    );
+  }
+}
+
+class SalaryPaymentModel {
+  final int id;
+  final String paymentReference;
+  final int? batchId;
+  final int cycleId;
+  final String cycleCode;
+  final int userId;
+  final String? employeeName;
+  final double amountPaid;
+  final double netPayable;
+  final double remainingBalance;
+  final String paymentDate;
+  final String status;
+  final String? recordedByName;
+  final String? notes;
+  final DateTime createdAt;
+
+  SalaryPaymentModel({
+    required this.id,
+    required this.paymentReference,
+    this.batchId,
+    required this.cycleId,
+    required this.cycleCode,
+    required this.userId,
+    this.employeeName,
+    required this.amountPaid,
+    required this.netPayable,
+    required this.remainingBalance,
+    required this.paymentDate,
+    required this.status,
+    this.recordedByName,
+    this.notes,
+    required this.createdAt,
+  });
+
+  factory SalaryPaymentModel.fromJson(Map<String, dynamic> json) {
+    DateTime parseDt(dynamic val) {
+      if (val == null) return DateTime.now();
+      String s = val.toString().trim();
+      if (!s.endsWith('Z') && !s.contains('+')) s = '${s}Z';
+      return (DateTime.tryParse(s) ?? DateTime.now()).toLocal();
+    }
+
+    double toDbl(dynamic val) {
+      if (val == null) return 0.0;
+      if (val is num) return val.toDouble();
+      return double.tryParse(val.toString()) ?? 0.0;
+    }
+
+    return SalaryPaymentModel(
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      paymentReference: json['payment_reference']?.toString() ?? '',
+      batchId: json['batch_id'] is int ? json['batch_id'] : int.tryParse(json['batch_id']?.toString() ?? ''),
+      cycleId: json['cycle_id'] is int ? json['cycle_id'] : int.tryParse(json['cycle_id']?.toString() ?? '0') ?? 0,
+      cycleCode: json['cycle_code']?.toString() ?? '',
+      userId: json['user_id'] is int ? json['user_id'] : int.tryParse(json['user_id']?.toString() ?? '0') ?? 0,
+      employeeName: json['employee_name']?.toString(),
+      amountPaid: toDbl(json['amount_paid']),
+      netPayable: toDbl(json['net_payable']),
+      remainingBalance: toDbl(json['remaining_balance']),
+      paymentDate: json['payment_date']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'completed',
+      recordedByName: json['recorded_by_name']?.toString(),
+      notes: json['notes']?.toString(),
+      createdAt: parseDt(json['created_at']),
     );
   }
 }
@@ -186,9 +383,15 @@ class SalaryCalculationModel {
   final String email;
   final String? department;
   final String payrollPeriod;
+  final String cycleCode;
+  final String startDate;
+  final String endDate;
   final String salaryType; // 'daily_wage' | 'fixed_monthly'
   final double baseRate;
+  final double? configuredMonthlyCap;
+  final bool hasConfig;
   final double totalWorkingDays;
+  final double activeWorkingDays;
   final double presentDays;
   final double paidLeaveDays;
   final double payableDays;
@@ -207,7 +410,16 @@ class SalaryCalculationModel {
   final double employerEpf;
   final double employerEsic;
   final double ctc;
+  final double amountDisbursed;
+  final double remainingPayable;
+  final String paymentStatus;
+  final String? paymentDate;
+  final String? disbursementReference;
   final bool isFinalized;
+
+  String get cycleStartDate => startDate;
+  String get cycleEndDate => endDate;
+  double? get monthlySalaryCap => configuredMonthlyCap;
 
   SalaryCalculationModel({
     required this.userId,
@@ -215,9 +427,15 @@ class SalaryCalculationModel {
     required this.email,
     this.department,
     required this.payrollPeriod,
+    this.cycleCode = '',
+    this.startDate = '',
+    this.endDate = '',
     required this.salaryType,
     required this.baseRate,
+    this.configuredMonthlyCap,
+    this.hasConfig = true,
     required this.totalWorkingDays,
+    this.activeWorkingDays = 0.0,
     required this.presentDays,
     required this.paidLeaveDays,
     required this.payableDays,
@@ -236,6 +454,11 @@ class SalaryCalculationModel {
     required this.employerEpf,
     required this.employerEsic,
     required this.ctc,
+    this.amountDisbursed = 0.0,
+    this.remainingPayable = 0.0,
+    this.paymentStatus = 'draft',
+    this.paymentDate,
+    this.disbursementReference,
     this.isFinalized = false,
   });
 
@@ -246,6 +469,12 @@ class SalaryCalculationModel {
       return double.tryParse(val.toString()) ?? 0.0;
     }
 
+    final cycleCode = json['cycleCode']?.toString() ??
+        json['cycle_code']?.toString() ??
+        json['payrollPeriod']?.toString() ??
+        json['payroll_period']?.toString() ??
+        '';
+
     return SalaryCalculationModel(
       userId: json['userId'] is int
           ? json['userId']
@@ -255,10 +484,18 @@ class SalaryCalculationModel {
       fullName: json['fullName']?.toString() ?? json['full_name']?.toString() ?? 'Employee',
       email: json['email']?.toString() ?? '',
       department: json['department']?.toString(),
-      payrollPeriod: json['payrollPeriod']?.toString() ?? json['payroll_period']?.toString() ?? '',
+      payrollPeriod: json['payrollPeriod']?.toString() ?? json['payroll_period']?.toString() ?? cycleCode,
+      cycleCode: cycleCode,
+      startDate: json['startDate']?.toString() ?? json['start_date']?.toString() ?? '',
+      endDate: json['endDate']?.toString() ?? json['end_date']?.toString() ?? '',
       salaryType: json['salaryType']?.toString() ?? json['salary_type']?.toString() ?? 'daily_wage',
       baseRate: toDbl(json['baseRate'] ?? json['base_rate']),
+      configuredMonthlyCap: json['configuredMonthlyCap'] != null
+          ? toDbl(json['configuredMonthlyCap'])
+          : null,
+      hasConfig: json['hasConfig'] ?? true,
       totalWorkingDays: toDbl(json['totalWorkingDays'] ?? json['total_working_days']),
+      activeWorkingDays: toDbl(json['activeWorkingDays'] ?? json['active_working_days'] ?? json['totalWorkingDays']),
       presentDays: toDbl(json['presentDays'] ?? json['present_days']),
       paidLeaveDays: toDbl(json['paidLeaveDays'] ?? json['paid_leave_days']),
       payableDays: toDbl(json['payableDays'] ?? json['payable_days']),
@@ -277,7 +514,12 @@ class SalaryCalculationModel {
       employerEpf: toDbl(json['employerEpf'] ?? json['employer_epf']),
       employerEsic: toDbl(json['employerEsic'] ?? json['employer_esic']),
       ctc: toDbl(json['ctc']),
-      isFinalized: json['status'] == 'finalized' || json['isFinalized'] == true,
+      amountDisbursed: toDbl(json['amountDisbursed'] ?? json['amount_disbursed']),
+      remainingPayable: toDbl(json['remainingPayable'] ?? json['remaining_payable']),
+      paymentStatus: json['paymentStatus']?.toString() ?? json['payment_status']?.toString() ?? (json['status']?.toString() ?? 'draft'),
+      paymentDate: json['paymentDate']?.toString() ?? json['payment_date']?.toString(),
+      disbursementReference: json['disbursementReference']?.toString() ?? json['disbursement_reference']?.toString(),
+      isFinalized: json['status'] == 'finalized' || json['status'] == 'paid' || json['isFinalized'] == true,
     );
   }
 }

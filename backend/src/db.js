@@ -707,6 +707,138 @@ function initDatabase() {
         }
       },
     },
+    {
+      version: 8,
+      name: 'create_salary_cycles_and_disbursements_system',
+      up: async () => {
+        const pkDef = isPostgres ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+        const tsDef = isPostgres ? 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' : 'DATETIME DEFAULT CURRENT_TIMESTAMP';
+
+        // 1. Add official_start_date and cycle_start_day to salary_settings
+        try {
+          await run(`ALTER TABLE salary_settings ADD COLUMN official_start_date VARCHAR(20) DEFAULT '2026-11-03'`);
+        } catch (_) {}
+        try {
+          await run(`ALTER TABLE salary_settings ADD COLUMN cycle_start_day INTEGER DEFAULT 3`);
+        } catch (_) {}
+
+        // Ensure default record has official_start_date set to '2026-11-03' and cycle_start_day to 3
+        try {
+          await run(`UPDATE salary_settings SET official_start_date = '2026-11-03', cycle_start_day = 3 WHERE official_start_date IS NULL`);
+        } catch (_) {}
+
+        // 2. Salary Cycles Table
+        await run(`
+          CREATE TABLE IF NOT EXISTS salary_cycles (
+            id ${pkDef},
+            cycle_code VARCHAR(50) UNIQUE NOT NULL,
+            start_date VARCHAR(20) NOT NULL,
+            end_date VARCHAR(20) NOT NULL,
+            status VARCHAR(30) NOT NULL DEFAULT 'active',
+            total_gross REAL DEFAULT 0,
+            total_deductions REAL DEFAULT 0,
+            total_net REAL DEFAULT 0,
+            total_disbursed REAL DEFAULT 0,
+            remaining_payable REAL DEFAULT 0,
+            employee_count INTEGER DEFAULT 0,
+            finalized_by INTEGER REFERENCES users(id),
+            finalized_at ${tsDef},
+            closed_at ${tsDef},
+            notes TEXT,
+            created_at ${tsDef},
+            updated_at ${tsDef}
+          )
+        `);
+        try {
+          await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_salary_cycles_code ON salary_cycles(cycle_code)`);
+        } catch (_) {}
+        try {
+          await run(`CREATE INDEX IF NOT EXISTS idx_salary_cycles_dates ON salary_cycles(start_date, end_date)`);
+        } catch (_) {}
+        try {
+          await run(`CREATE INDEX IF NOT EXISTS idx_salary_cycles_status ON salary_cycles(status)`);
+        } catch (_) {}
+
+        // 3. Disbursement Batches Table
+        await run(`
+          CREATE TABLE IF NOT EXISTS salary_disbursement_batches (
+            id ${pkDef},
+            batch_reference VARCHAR(100) UNIQUE NOT NULL,
+            cycle_id INTEGER NOT NULL REFERENCES salary_cycles(id),
+            cycle_code VARCHAR(50) NOT NULL,
+            disbursement_date VARCHAR(20) NOT NULL,
+            total_amount REAL NOT NULL,
+            employee_count INTEGER NOT NULL,
+            disbursed_by INTEGER NOT NULL REFERENCES users(id),
+            payment_method VARCHAR(50) DEFAULT 'bank_transfer',
+            notes TEXT,
+            created_at ${tsDef}
+          )
+        `);
+        try {
+          await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_disb_batch_ref ON salary_disbursement_batches(batch_reference)`);
+        } catch (_) {}
+        try {
+          await run(`CREATE INDEX IF NOT EXISTS idx_disb_cycle ON salary_disbursement_batches(cycle_id)`);
+        } catch (_) {}
+
+        // 4. Individual Salary Payments Table
+        await run(`
+          CREATE TABLE IF NOT EXISTS salary_payments (
+            id ${pkDef},
+            payment_reference VARCHAR(100) UNIQUE NOT NULL,
+            batch_id INTEGER REFERENCES salary_disbursement_batches(id),
+            cycle_id INTEGER NOT NULL REFERENCES salary_cycles(id),
+            cycle_code VARCHAR(50) NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            amount_paid REAL NOT NULL,
+            net_payable REAL NOT NULL,
+            remaining_balance REAL NOT NULL,
+            payment_date VARCHAR(20) NOT NULL,
+            status VARCHAR(30) NOT NULL DEFAULT 'completed',
+            recorded_by INTEGER NOT NULL REFERENCES users(id),
+            notes TEXT,
+            created_at ${tsDef}
+          )
+        `);
+        try {
+          await run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_salary_pay_ref ON salary_payments(payment_reference)`);
+        } catch (_) {}
+        try {
+          await run(`CREATE INDEX IF NOT EXISTS idx_salary_pay_user ON salary_payments(user_id, cycle_id)`);
+        } catch (_) {}
+
+        // 5. Enhance payroll_records with cycle references and disbursement columns
+        try { await run(`ALTER TABLE payroll_records ADD COLUMN cycle_id INTEGER`); } catch (_) {}
+        try { await run(`ALTER TABLE payroll_records ADD COLUMN cycle_code VARCHAR(50)`); } catch (_) {}
+        try { await run(`ALTER TABLE payroll_records ADD COLUMN amount_disbursed REAL DEFAULT 0`); } catch (_) {}
+        try { await run(`ALTER TABLE payroll_records ADD COLUMN remaining_payable REAL DEFAULT 0`); } catch (_) {}
+        try { await run(`ALTER TABLE payroll_records ADD COLUMN payment_status VARCHAR(30) DEFAULT 'draft'`); } catch (_) {}
+        try { await run(`ALTER TABLE payroll_records ADD COLUMN payment_date VARCHAR(20)`); } catch (_) {}
+        try { await run(`ALTER TABLE payroll_records ADD COLUMN disbursement_reference VARCHAR(100)`); } catch (_) {}
+
+        // 6. Seed official first cycle starting 3 November 2026 (if not exists)
+        try {
+          const initialCycle = await get(`SELECT id FROM salary_cycles WHERE cycle_code = '2026-11-03_2026-12-02'`);
+          if (!initialCycle) {
+            if (isPostgres) {
+              await run(
+                `INSERT INTO salary_cycles (cycle_code, start_date, end_date, status)
+                 VALUES ('2026-11-03_2026-12-02', '2026-11-03', '2026-12-02', 'active')
+                 ON CONFLICT (cycle_code) DO NOTHING`
+              );
+            } else {
+              await run(
+                `INSERT OR IGNORE INTO salary_cycles (cycle_code, start_date, end_date, status)
+                 VALUES ('2026-11-03_2026-12-02', '2026-11-03', '2026-12-02', 'active')`
+              );
+            }
+          }
+        } catch (seedErr) {
+          console.warn('Initial salary cycle seed warning:', seedErr.message);
+        }
+      },
+    },
   ];
 
   for (const m of migrations) {
