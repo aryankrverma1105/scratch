@@ -55,14 +55,31 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
     });
 
     try {
-      final settings = await ApiService().getSalarySettings();
-      final configs = await ApiService().getEmployeeSalaryConfigs();
-      final cycles = await ApiService().listSalaryCycles();
-      final activeCycle = await ApiService().getActiveSalaryCycle();
+      SalarySettingsModel? settings;
+      try {
+        settings = await ApiService().getSalarySettings();
+      } catch (e) {
+        debugPrint('Salary settings fetch note: $e');
+      }
+
+      List<EmployeeSalaryConfigModel> configs = [];
+      try {
+        configs = await ApiService().getEmployeeSalaryConfigs();
+      } catch (e) {
+        debugPrint('Salary configs fetch note: $e');
+      }
+
+      List<SalaryCycleModel> cycles = [];
+      SalaryCycleModel? activeCycle;
+      try {
+        cycles = await ApiService().listSalaryCycles();
+        activeCycle = await ApiService().getActiveSalaryCycle();
+      } catch (e) {
+        debugPrint('Cycles endpoint note: $e');
+      }
       
       SalaryCycleModel? currentCycle = _selectedCycle;
       if (currentCycle != null) {
-        // verify it still exists in the fetched cycles
         final found = cycles.where((c) => c.cycleCode == currentCycle!.cycleCode).toList();
         if (found.isNotEmpty) {
           currentCycle = found.first;
@@ -73,17 +90,37 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
         currentCycle = activeCycle ?? (cycles.isNotEmpty ? cycles.first : null);
       }
 
-      final preview = await ApiService().previewPayroll(
-        cycleCode: currentCycle?.cycleCode,
-        month: currentCycle == null ? _monthStr : null,
-      );
-      final incentives = await ApiService().getAdminIncentives(month: _monthStr);
-      final overtimes = await ApiService().getAdminOvertime(month: _monthStr);
+      Map<String, dynamic> preview = {'calculations': []};
+      try {
+        preview = await ApiService().previewPayroll(
+          cycleCode: currentCycle?.cycleCode,
+          month: currentCycle == null ? _monthStr : null,
+        );
+      } catch (e) {
+        // Fallback to month preview if cycle preview fails
+        preview = await ApiService().previewPayroll(month: _monthStr);
+      }
+
+      List<DailyIncentiveModel> incentives = [];
+      try {
+        incentives = await ApiService().getAdminIncentives(month: _monthStr);
+      } catch (e) {
+        debugPrint('Incentives fetch note: $e');
+      }
+
+      List<OvertimeRecordModel> overtimes = [];
+      try {
+        overtimes = await ApiService().getAdminOvertime(month: _monthStr);
+      } catch (e) {
+        debugPrint('Overtime fetch note: $e');
+      }
 
       if (mounted) {
         setState(() {
-          _settings = settings;
-          _commonWageController.text = settings.commonDailyWage.toStringAsFixed(0);
+          if (settings != null) {
+            _settings = settings;
+            _commonWageController.text = settings.commonDailyWage.toStringAsFixed(0);
+          }
           _configs = configs;
           _cycles = cycles;
           _activeCycle = activeCycle;
