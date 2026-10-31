@@ -2080,7 +2080,7 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
           if (_advances.isEmpty)
             Container(
               padding: const EdgeInsets.all(32),
-              alignment: Alignment.center;
+              alignment: Alignment.center,
               child: const Column(
                 children: [
                   Icon(Icons.account_balance_wallet_outlined, color: Colors.white24, size: 48),
@@ -2121,7 +2121,7 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
         border: Border.all(color: Colors.white12),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start;
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,

@@ -1398,5 +1398,4 @@ class ApiService {
     }
   }
 }
-}
 

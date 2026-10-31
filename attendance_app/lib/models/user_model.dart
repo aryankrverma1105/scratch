@@ -22,6 +22,13 @@ class UserModel {
   bool get isAdmin => role == 'admin';
   bool get isRootAdmin => id == 1 || email.trim().toLowerCase() == 'admin@company.com';
 
+  String get initials {
+    final parts = fullName.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts[0].isEmpty) return 'U';
+    if (parts.length == 1) return parts[0][0].toUpperCase();
+    return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+  }
+
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       id: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0,
