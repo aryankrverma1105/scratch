@@ -16,6 +16,9 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
   DateTime _selectedDate = DateTime.now();
   List<AttendanceRecord> _records = [];
   bool _isLoading = true;
+  int _totalPresent = 0;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -23,13 +26,25 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
     _loadAttendance();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadAttendance() async {
     setState(() => _isLoading = true);
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
-      final list = await ApiService().adminGetAttendance(date: dateStr);
+      final report = await ApiService().adminGetAttendanceReport(
+        date: dateStr,
+        search: _searchQuery,
+      );
       if (mounted) {
-        setState(() => _records = list);
+        setState(() {
+          _records = (report['records'] as List).cast<AttendanceRecord>();
+          _totalPresent = report['totalPresent'] as int;
+        });
       }
     } catch (e) {
       debugPrint('Error loading attendance: $e');
@@ -204,6 +219,103 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       ),
       body: Column(
         children: [
+          // Prominent Summary Header: Total Employees Present (Requirement 4)
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.success.withOpacity(0.25),
+                  AppColors.cardDark,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.success.withOpacity(0.5), width: 1.5),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.people_alt, color: AppColors.success, size: 24),
+                    ),
+                    const SizedBox(width: 14),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Total Employees Present',
+                          style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$_totalPresent',
+                          style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.success.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    DateFormat('d MMM yyyy').format(_selectedDate),
+                    style: const TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Case-insensitive Search Bar by Name, ID, or Email (Requirement 5)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'Search by employee name, ID or email...',
+                hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+                prefixIcon: const Icon(Icons.search, color: Colors.white54, size: 20),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.white54, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                          _loadAttendance();
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: AppColors.cardDark,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              onChanged: (val) {
+                setState(() => _searchQuery = val);
+                _loadAttendance();
+              },
+            ),
+          ),
+
           // Date Filter Bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

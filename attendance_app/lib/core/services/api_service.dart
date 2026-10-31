@@ -565,17 +565,41 @@ class ApiService {
 
   Future<List<AttendanceRecord>> adminGetAttendance({String? date, int? userId, int limit = 200}) async {
     try {
+      final report = await adminGetAttendanceReport(date: date, userId: userId, limit: limit);
+      return (report['records'] as List).cast<AttendanceRecord>();
+    } catch (e) {
+      throw Exception(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<Map<String, dynamic>> adminGetAttendanceReport({String? date, int? userId, String? search, int limit = 200}) async {
+    try {
       final query = <String, dynamic>{'limit': limit};
       if (date != null) query['date'] = date;
       if (userId != null) query['userId'] = userId;
+      if (search != null && search.trim().isNotEmpty) query['search'] = search.trim();
 
       final response = await _dio.get('/api/admin/attendance', queryParameters: query);
-      final list = (response.data['records'] as List)
+      final list = (response.data['records'] as List? ?? [])
           .map((r) => AttendanceRecord.fromJson(r))
           .toList();
-      return list;
+      return {
+        'records': list,
+        'totalPresent': response.data['totalPresent'] is int
+            ? response.data['totalPresent']
+            : int.tryParse(response.data['totalPresent']?.toString() ?? '0') ?? 0,
+      };
     } on DioException catch (e) {
       throw Exception(e.response?.data?['error'] ?? 'Failed to load attendance');
+    }
+  }
+
+  Future<Map<String, dynamic>> getUserProfile(int userId) async {
+    try {
+      final response = await _dio.get('/api/admin/users/$userId/profile');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch user profile');
     }
   }
 
@@ -1111,13 +1135,229 @@ class ApiService {
 
   // --- Admin Audit / Activity Logs ---
 
-  Future<Map<String, dynamic>> getActivityLogs({int page = 1, int limit = 50, String? action}) async {
+  // --- Salary Advances & EMI APIs ---
+
+  Future<List<SalaryAdvanceModel>> getSalaryAdvances({int? userId, String? status}) async {
+    try {
+      final params = <String, dynamic>{};
+      if (userId != null) params['userId'] = userId;
+      if (status != null && status.isNotEmpty) params['status'] = status;
+      final response = await _dio.get('/api/salary/admin/advances', queryParameters: params);
+      final list = (response.data['advances'] as List? ?? []);
+      return list.map((a) => SalaryAdvanceModel.fromJson(a)).toList();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch salary advances');
+    }
+  }
+
+  Future<SalaryAdvanceModel> createSalaryAdvance({
+    required int userId,
+    required double amount,
+    String? purpose,
+    String? disbursementDate,
+    String recoveryType = 'emi',
+    int totalInstallments = 1,
+    String? startMonth,
+    String? notes,
+  }) async {
+    try {
+      final response = await _dio.post('/api/salary/admin/advances', data: {
+        'userId': userId,
+        'amount': amount,
+        if (purpose != null) 'purpose': purpose,
+        if (disbursementDate != null) 'disbursementDate': disbursementDate,
+        'recoveryType': recoveryType,
+        'totalInstallments': totalInstallments,
+        if (startMonth != null) 'startMonth': startMonth,
+        if (notes != null) 'notes': notes,
+      });
+      return SalaryAdvanceModel.fromJson(response.data['advance']);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to create salary advance');
+    }
+  }
+
+  Future<Map<String, dynamic>> getSalaryAdvanceDetails(int advanceId) async {
+    try {
+      final response = await _dio.get('/api/salary/admin/advances/$advanceId');
+      final adv = SalaryAdvanceModel.fromJson(response.data['advance']);
+      final emisList = (response.data['emis'] as List? ?? []);
+      final emis = emisList.map((e) => SalaryAdvanceEmiModel.fromJson(e)).toList();
+      return {
+        'advance': adv,
+        'emis': emis,
+      };
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch advance details');
+    }
+  }
+
+  Future<void> pauseSalaryAdvance(int advanceId) async {
+    try {
+      await _dio.put('/api/salary/admin/advances/$advanceId/pause');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to pause salary advance');
+    }
+  }
+
+  Future<void> resumeSalaryAdvance(int advanceId) async {
+    try {
+      await _dio.put('/api/salary/admin/advances/$advanceId/resume');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to resume salary advance');
+    }
+  }
+
+  Future<void> settleSalaryAdvanceEarly({
+    required int advanceId,
+    double? settlementAmount,
+    String? paymentMethod,
+    String? paymentReference,
+    String? notes,
+  }) async {
+    try {
+      await _dio.post('/api/salary/admin/advances/$advanceId/settle', data: {
+        if (settlementAmount != null) 'settlementAmount': settlementAmount,
+        if (paymentMethod != null) 'paymentMethod': paymentMethod,
+        if (paymentReference != null) 'paymentReference': paymentReference,
+        if (notes != null) 'notes': notes,
+      });
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to settle salary advance');
+    }
+  }
+
+  Future<Map<String, dynamic>> getMyAdvances() async {
+    try {
+      final response = await _dio.get('/api/salary/my-advances');
+      final advsList = (response.data['advances'] as List? ?? []);
+      final advances = advsList.map((a) => SalaryAdvanceModel.fromJson(a)).toList();
+      final activeAdv = response.data['activeAdvance'] != null
+          ? SalaryAdvanceModel.fromJson(response.data['activeAdvance'])
+          : null;
+      final nextEmi = response.data['nextEmi'] != null
+          ? SalaryAdvanceEmiModel.fromJson(response.data['nextEmi'])
+          : null;
+      final emisList = (response.data['emis'] as List? ?? []);
+      final emis = emisList.map((e) => SalaryAdvanceEmiModel.fromJson(e)).toList();
+      return {
+        'advances': advances,
+        'activeAdvance': activeAdv,
+        'nextEmi': nextEmi,
+        'emis': emis,
+      };
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch my advances');
+    }
+  }
+
+  // --- Google Drive Automated Backups APIs ---
+
+  Future<List<BackupDestinationModel>> getBackupDestinations() async {
+    try {
+      final response = await _dio.get('/api/admin/backups/destinations');
+      final list = (response.data['destinations'] as List? ?? []);
+      return list.map((d) => BackupDestinationModel.fromJson(d)).toList();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch backup destinations');
+    }
+  }
+
+  Future<BackupDestinationModel> saveBackupDestination({
+    int? id,
+    required String name,
+    String? folderId,
+    String? clientId,
+    String? clientSecret,
+    String? refreshToken,
+    String? accountEmail,
+    bool isEnabled = true,
+  }) async {
+    try {
+      final response = await _dio.post('/api/admin/backups/destinations', data: {
+        if (id != null) 'id': id,
+        'name': name,
+        if (folderId != null) 'folderId': folderId,
+        if (clientId != null) 'clientId': clientId,
+        if (clientSecret != null) 'clientSecret': clientSecret,
+        if (refreshToken != null) 'refreshToken': refreshToken,
+        if (accountEmail != null) 'accountEmail': accountEmail,
+        'isEnabled': isEnabled,
+      });
+      return BackupDestinationModel.fromJson(response.data['destination']);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to save backup destination');
+    }
+  }
+
+  Future<Map<String, dynamic>> testBackupDestination(int id) async {
+    try {
+      final response = await _dio.post('/api/admin/backups/destinations/$id/test');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to test backup destination');
+    }
+  }
+
+  Future<void> deleteBackupDestination(int id) async {
+    try {
+      await _dio.delete('/api/admin/backups/destinations/$id');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to delete backup destination');
+    }
+  }
+
+  Future<List<BackupRecordModel>> getBackupHistory({int limit = 50}) async {
+    try {
+      final response = await _dio.get('/api/admin/backups/history', queryParameters: {'limit': limit});
+      final list = (response.data['records'] as List? ?? []);
+      return list.map((r) => BackupRecordModel.fromJson(r)).toList();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch backup history');
+    }
+  }
+
+  Future<Map<String, dynamic>> triggerManualBackup({int? destinationId}) async {
+    try {
+      final response = await _dio.post('/api/admin/backups/trigger', data: {
+        if (destinationId != null) 'destinationId': destinationId,
+      });
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to trigger backup');
+    }
+  }
+
+  Future<void> retryBackup(int recordId) async {
+    try {
+      await _dio.post('/api/admin/backups/records/$recordId/retry');
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to retry backup upload');
+    }
+  }
+
+  // --- Admin Audit / Activity Logs ---
+
+  Future<Map<String, dynamic>> getActivityLogs({
+    int page = 1,
+    int limit = 50,
+    String? action,
+    String? module,
+    String? search,
+    String? startDate,
+    String? endDate,
+  }) async {
     try {
       final params = <String, dynamic>{
         'page': page,
         'limit': limit,
       };
       if (action != null && action.isNotEmpty) params['action'] = action;
+      if (module != null && module.isNotEmpty) params['module'] = module;
+      if (search != null && search.isNotEmpty) params['search'] = search;
+      if (startDate != null && startDate.isNotEmpty) params['startDate'] = startDate;
+      if (endDate != null && endDate.isNotEmpty) params['endDate'] = endDate;
+
       final response = await _dio.get('/api/admin/audit-logs', queryParameters: params);
       final list = (response.data['logs'] as List? ?? []);
       final logs = list.map((l) => ActivityLogModel.fromJson(l)).toList();
@@ -1131,5 +1371,32 @@ class ApiService {
       throw Exception(e.response?.data?['error'] ?? 'Failed to fetch activity logs');
     }
   }
+
+  Future<String> exportActivityLogsCsv({
+    String? action,
+    String? module,
+    String? search,
+    String? startDate,
+    String? endDate,
+  }) async {
+    try {
+      final params = <String, dynamic>{};
+      if (action != null && action.isNotEmpty) params['action'] = action;
+      if (module != null && module.isNotEmpty) params['module'] = module;
+      if (search != null && search.isNotEmpty) params['search'] = search;
+      if (startDate != null && startDate.isNotEmpty) params['startDate'] = startDate;
+      if (endDate != null && endDate.isNotEmpty) params['endDate'] = endDate;
+
+      final response = await _dio.get<String>(
+        '/api/admin/audit-logs/export',
+        queryParameters: params,
+        options: Options(responseType: ResponseType.plain),
+      );
+      return response.data ?? '';
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to export activity logs CSV');
+    }
+  }
+}
 }
 

@@ -23,6 +23,9 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
   List<OvertimeRecordModel> _overtimes = [];
   double _overtimeTotalAmount = 0;
   List<SalaryCalculationModel> _history = [];
+  SalaryAdvanceModel? _activeAdvance;
+  SalaryAdvanceEmiModel? _nextEmi;
+  List<SalaryAdvanceEmiModel> _advanceEmis = [];
 
   @override
   void initState() {
@@ -50,6 +53,12 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
       final incRes = await ApiService().getMyIncentives(month: _monthStr);
       final otRes = await ApiService().getMyOvertime(month: _monthStr);
       final hist = await ApiService().getMyPayrollHistory();
+      Map<String, dynamic> advData = {};
+      try {
+        advData = await ApiService().getMyAdvances();
+      } catch (e) {
+        debugPrint('Advances fetch note: $e');
+      }
 
       if (mounted) {
         setState(() {
@@ -59,6 +68,9 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
           _overtimes = otRes;
           _overtimeTotalAmount = otRes.fold<double>(0.0, (sum, o) => sum + (o.status == 'approved' ? o.amount : 0.0));
           _history = hist;
+          _activeAdvance = advData['activeAdvance'];
+          _nextEmi = advData['nextEmi'];
+          _advanceEmis = (advData['emis'] as List? ?? []).cast<SalaryAdvanceEmiModel>();
           _isLoading = false;
         });
       }
@@ -516,6 +528,10 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
                   _buildRow('Employee ESIC (0.75%)', '- ₹${NumberFormat('#,##,##0.00').format(s.employeeEsic)}', color: AppColors.error),
                 ] else ...[
                   _buildRow('Company 5% Deduction', '- ₹${NumberFormat('#,##,##0.00').format(s.gratuityDeduction)}', color: AppColors.error),
+                ],
+                if (s.advanceDeduction > 0) ...[
+                  const Divider(color: Colors.white12),
+                  _buildRow('Salary Advance EMI Deduction', '- ₹${NumberFormat('#,##,##0.00').format(s.advanceDeduction)}', color: Colors.orangeAccent),
                 ],
                 const Divider(color: Colors.white24),
                 _buildRow('Net Payable Salary', '₹${NumberFormat('#,##,##0.00').format(s.netSalary)}', isBold: true, color: AppColors.success),

@@ -57,6 +57,7 @@ app.use('/api/location', locationRoutes);
 app.use('/api/files', fileRoutes); // Authenticated selfies
 app.use('/api/leave', leaveRoutes); // Leave Management System
 app.use('/api/salary', salaryRoutes); // Salary Management System
+app.get('/api/admin/audit-logs/export', authenticateToken, requireRole('admin'), auditLogController.exportActivityLogsCsv); // Admin Audit Logs CSV Export
 app.get('/api/admin/audit-logs', authenticateToken, requireRole('admin'), auditLogController.getActivityLogs); // Admin Activity Logs
 
 // 404 handler
@@ -82,10 +83,12 @@ async function start() {
     const { startWatchdog } = require('./src/services/watchdog');
     const { initAutoCheckoutCron } = require('./src/services/autoCheckout');
     const { initLeaveCronJobs } = require('./src/services/leaveCron');
+    const { initBackupCron } = require('./src/services/backupCron');
     initFcm();
     startWatchdog();
     initAutoCheckoutCron();
     initLeaveCronJobs();
+    initBackupCron();
 
     const bindHost = process.env.HOST || '0.0.0.0';
     const server = app.listen(config.PORT, bindHost, () => {

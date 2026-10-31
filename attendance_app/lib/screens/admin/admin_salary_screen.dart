@@ -29,13 +29,14 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
 
   List<DailyIncentiveModel> _incentives = [];
   List<OvertimeRecordModel> _overtimes = [];
+  List<SalaryAdvanceModel> _advances = [];
 
   final TextEditingController _commonWageController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _loadAllData();
   }
 
@@ -97,8 +98,20 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
           month: currentCycle == null ? _monthStr : null,
         );
       } catch (e) {
-        // Fallback to month preview if cycle preview fails
-        preview = await ApiService().previewPayroll(month: _monthStr);
+        // Graceful fallback to month preview without crashing screen on 404
+        try {
+          preview = await ApiService().previewPayroll(month: _monthStr);
+        } catch (inner) {
+          debugPrint('Preview payroll endpoint note: $inner');
+          preview = {'calculations': []};
+        }
+      }
+
+      List<SalaryAdvanceModel> advances = [];
+      try {
+        advances = await ApiService().getSalaryAdvances();
+      } catch (e) {
+        debugPrint('Advances fetch note: $e');
       }
 
       List<DailyIncentiveModel> incentives = [];
@@ -130,6 +143,7 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
           _finalizedAt = preview['finalizedAt']?.toString();
           _incentives = incentives;
           _overtimes = overtimes;
+          _advances = advances;
           _isLoading = false;
         });
       }
@@ -844,6 +858,7 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
             indicatorSize: TabBarIndicatorSize.tab,
             tabs: const [
               Tab(text: 'Payroll'),
+              Tab(text: 'Advances & EMI'),
               Tab(text: 'Settings'),
               Tab(text: 'Incentives'),
               Tab(text: 'Overtime'),
@@ -855,6 +870,7 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
             controller: _tabController,
             children: [
               _buildPayrollTab(),
+              _buildAdvancesTab(),
               _buildSettingsTab(),
               _buildIncentivesTab(),
               _buildOvertimeTab(),
@@ -2005,6 +2021,468 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAdvancesTab() {
+    final totalOutstanding = _advances.fold<double>(0.0, (sum, a) => sum + a.remainingBalance);
+    final activeCount = _advances.where((a) => a.status == 'active').length;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Summary Card
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppColors.info.withOpacity(0.2), AppColors.cardDark],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.info.withOpacity(0.4)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Total Outstanding Advances', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    const SizedBox(height: 4),
+                    Text(
+                      '₹' + NumberFormat('#,##,##0').format(totalOutstanding),
+                      style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text('$activeCount Active Salary Advance(s)', style: const TextStyle(color: AppColors.info, fontSize: 12)),
+                  ],
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.info,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: _showCreateAdvanceDialog,
+                  icon: const Icon(Icons.add, color: Colors.white, size: 18),
+                  label: const Text('Record Advance', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text('Employee Advance Records', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 12),
+          if (_advances.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(32),
+              alignment: Alignment.center;
+              child: const Column(
+                children: [
+                  Icon(Icons.account_balance_wallet_outlined, color: Colors.white24, size: 48),
+                  SizedBox(height: 12),
+                  Text('No salary advances recorded', style: TextStyle(color: AppColors.textMuted, fontSize: 15)),
+                ],
+              ),
+            )
+          else
+            ..._advances.map((adv) => _buildAdvanceCard(adv)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdvanceCard(SalaryAdvanceModel adv) {
+    Color statusColor;
+    switch (adv.status) {
+      case 'active':
+        statusColor = AppColors.success;
+        break;
+      case 'paused':
+        statusColor = Colors.amber;
+        break;
+      case 'completed':
+        statusColor = AppColors.info;
+        break;
+      default:
+        statusColor = Colors.white54;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardDark,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start;
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(adv.fullName ?? 'Employee #' + adv.userId.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                    if (adv.department != null)
+                      Text(adv.department!, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  adv.status.toUpperCase(),
+                  style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Total Advance', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                  Text('₹' + NumberFormat('#,##,##0').format(adv.amount), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Recovered', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                  Text('₹' + NumberFormat('#,##,##0').format(adv.totalRecovered), style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 14)),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Remaining Balance', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                  Text('₹' + NumberFormat('#,##,##0').format(adv.remainingBalance), style: const TextStyle(color: Colors.amber, fontWeight: FontWeight.bold, fontSize: 14)),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            adv.recoveryType == 'single'
+                ? 'Recovery: Single Month (100%)'
+                : 'Recovery: ' + adv.totalInstallments.toString() + ' Monthly EMIs of ₹' + NumberFormat('#,##,##0').format(adv.monthlyInstallmentAmount) + '/mo',
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          if (adv.purpose != null && adv.purpose!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('Purpose: ' + adv.purpose!, style: const TextStyle(color: AppColors.textMuted, fontSize: 11.5)),
+          ],
+          const Divider(color: Colors.white10, height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton.icon(
+                icon: const Icon(Icons.calendar_month, color: AppColors.info, size: 16),
+                label: const Text('View EMI Schedule', style: TextStyle(color: AppColors.info, fontSize: 12)),
+                onPressed: () => _showEmiScheduleDialog(adv.id),
+              ),
+              Row(
+                children: [
+                  if (adv.status == 'active')
+                    TextButton(
+                      onPressed: () async {
+                        await ApiService().pauseSalaryAdvance(adv.id);
+                        _loadAllData();
+                      },
+                      child: const Text('Pause', style: TextStyle(color: Colors.amber, fontSize: 12)),
+                    )
+                  else if (adv.status == 'paused')
+                    TextButton(
+                      onPressed: () async {
+                        await ApiService().resumeSalaryAdvance(adv.id);
+                        _loadAllData();
+                      },
+                      child: const Text('Resume', style: TextStyle(color: AppColors.success, fontSize: 12)),
+                    ),
+                  if (adv.status != 'completed')
+                    TextButton(
+                      onPressed: () => _showEarlySettlementDialog(adv),
+                      child: const Text('Settle Early', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCreateAdvanceDialog() {
+    int? selectedUserId = _configs.isNotEmpty ? _configs.first.userId : null;
+    final amountController = TextEditingController();
+    final purposeController = TextEditingController();
+    final notesController = TextEditingController();
+    String recoveryType = 'emi';
+    int installments = 3;
+    String startMonth = _monthStr;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Record New Salary Advance', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Select Employee *', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<int>(
+                    value: selectedUserId,
+                    dropdownColor: AppColors.cardDark,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
+                    items: _configs.map((c) {
+                      return DropdownMenuItem<int>(
+                        value: c.userId,
+                        child: Text(c.fullName + ' (' + (c.salaryType == 'fixed_monthly' ? 'Monthly' : 'Daily') + ')'),
+                      );
+                    }).toList(),
+                    onChanged: (val) => setDialogState(() => selectedUserId = val),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: const InputDecoration(labelText: 'Advance Amount (₹) *', labelStyle: TextStyle(color: Colors.white70)),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: purposeController,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: const InputDecoration(labelText: 'Purpose / Reason', labelStyle: TextStyle(color: Colors.white70), hintText: 'e.g. Festival advance, emergency'),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Recovery Option *', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Single Month'),
+                        selected: recoveryType == 'single',
+                        onSelected: (sel) => setDialogState(() => recoveryType = 'single'),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('Monthly EMI'),
+                        selected: recoveryType == 'emi',
+                        onSelected: (sel) => setDialogState(() => recoveryType = 'emi'),
+                      ),
+                    ],
+                  ),
+                  if (recoveryType == 'emi') ...[
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      value: installments,
+                      dropdownColor: AppColors.cardDark,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      decoration: const InputDecoration(labelText: 'Installments (Months)', labelStyle: TextStyle(color: Colors.white70)),
+                      items: [2, 3, 4, 6, 8, 10, 12].map((n) {
+                        return DropdownMenuItem<int>(
+                          value: n,
+                          child: Text('$n Months'),
+                        );
+                      }).toList(),
+                      onChanged: (val) => setDialogState(() => installments = val ?? 3),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: notesController,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: const InputDecoration(labelText: 'Admin Notes', labelStyle: TextStyle(color: Colors.white70)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white70))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.info),
+              onPressed: () async {
+                final amt = double.tryParse(amountController.text.trim()) ?? 0;
+                if (selectedUserId == null || amt <= 0) return;
+                Navigator.pop(ctx);
+                try {
+                  await ApiService().createSalaryAdvance(
+                    userId: selectedUserId!,
+                    amount: amt,
+                    purpose: purposeController.text.trim().isEmpty ? null : purposeController.text.trim(),
+                    recoveryType: recoveryType,
+                    totalInstallments: recoveryType == 'single' ? 1 : installments,
+                    startMonth: startMonth,
+                    notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(backgroundColor: AppColors.success, content: Text('Salary advance created successfully')),
+                  );
+                  _loadAllData();
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(backgroundColor: AppColors.error, content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                  );
+                }
+              },
+              child: const Text('Record Advance', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showEmiScheduleDialog(int advanceId) async {
+    try {
+      final details = await ApiService().getSalaryAdvanceDetails(advanceId);
+      final SalaryAdvanceModel adv = details['advance'];
+      final List<SalaryAdvanceEmiModel> emis = details['emis'];
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            'EMI Schedule - ' + (adv.fullName ?? 'Employee'),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: emis.length,
+              separatorBuilder: (_, __) => const Divider(color: Colors.white10),
+              itemBuilder: (ctx, idx) {
+                final e = emis[idx];
+                Color color = e.status == 'deducted'
+                    ? AppColors.success
+                    : (e.status == 'paused' ? Colors.amber : (e.status == 'settled_early' ? Colors.blue : Colors.white70));
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Installment #' + e.installmentNumber.toString() + ' (' + e.dueMonth + ')', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                          Text('Scheduled: ₹' + NumberFormat('#,##,##0').format(e.scheduledAmount), style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(e.status.toUpperCase(), style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close', style: TextStyle(color: Colors.white))),
+          ],
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: AppColors.error, content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  void _showEarlySettlementDialog(SalaryAdvanceModel adv) {
+    final amountController = TextEditingController(text: adv.remainingBalance.toStringAsFixed(0));
+    final methodController = TextEditingController(text: 'bank_transfer');
+    final refController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Settle Advance Early', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Employee: ' + (adv.fullName ?? 'Employee'), style: const TextStyle(color: Colors.white70, fontSize: 13)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: amountController,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              decoration: const InputDecoration(labelText: 'Settlement Amount (₹) *', labelStyle: TextStyle(color: Colors.white70)),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: refController,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              decoration: const InputDecoration(labelText: 'Payment Reference / Transaction ID', labelStyle: TextStyle(color: Colors.white70), hintText: 'e.g. UPI-TXN-12345'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.white70))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
+            onPressed: () async {
+              final amt = double.tryParse(amountController.text.trim()) ?? adv.remainingBalance;
+              Navigator.pop(ctx);
+              try {
+                await ApiService().settleSalaryAdvanceEarly(
+                  advanceId: adv.id,
+                  settlementAmount: amt,
+                  paymentMethod: methodController.text.trim(),
+                  paymentReference: refController.text.trim(),
+                );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(backgroundColor: AppColors.success, content: Text('Advance settled early successfully')),
+                );
+                _loadAllData();
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(backgroundColor: AppColors.error, content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                );
+              }
+            },
+            child: const Text('Confirm Settlement', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }

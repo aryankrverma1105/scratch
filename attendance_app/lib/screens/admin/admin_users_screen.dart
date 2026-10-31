@@ -1091,4 +1091,187 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       ),
     );
   }
+
+
+  Future<void> _showUserProfileModal(UserModel user) async {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
+        future: ApiService().getUserProfile(user.id),
+        builder: (ctx, snapshot) {
+          final profile = snapshot.data;
+          final userMap = profile?['user'] as Map<String, dynamic>?;
+          final leaveMap = profile?['leaveBalance'] as Map<String, dynamic>?;
+          final salaryMap = profile?['salaryConfig'] as Map<String, dynamic>?;
+          final monthlyPresent = profile?['monthlyPresentDays'] ?? 0;
+          final activeAdvances = (profile?['activeAdvances'] as List? ?? []);
+
+          return Container(
+            decoration: const BoxDecoration(
+              color: AppColors.cardDark,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+              top: 24,
+              left: 20,
+              right: 20,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 28,
+                        backgroundColor: user.isRootAdmin
+                            ? const Color(0xFFFFB300)
+                            : (user.isAdmin ? AppColors.info : AppColors.success),
+                        child: Text(
+                          user.initials,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(user.fullName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                            const SizedBox(height: 2),
+                            Text(user.email, style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                            const SizedBox(height: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: (user.isAdmin ? AppColors.info : AppColors.success).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                user.isRootAdmin ? 'SUPER ADMIN' : user.role.toUpperCase(),
+                                style: TextStyle(
+                                  color: user.isRootAdmin ? const Color(0xFFFFB300) : (user.isAdmin ? AppColors.info : AppColors.success),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Divider(color: Colors.white12, height: 32),
+                  if (snapshot.connectionState == ConnectionState.waiting)
+                    const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator(color: AppColors.info)))
+                  else ...[
+                    const Text('Profile & Employment Details', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                    const SizedBox(height: 12),
+                    _buildProfileRow('Department', user.department ?? 'General Operations'),
+                    _buildProfileRow('Phone', user.phone ?? 'Not specified'),
+                    _buildProfileRow('Employee ID', '#${user.id}'),
+                    _buildProfileRow('Joining Date', userMap?['joining_date']?.toString() ?? 'Active'),
+                    _buildProfileRow('Account Status', user.isActive ? 'Active' : 'Deactivated'),
+                    const SizedBox(height: 16),
+                    const Text('Attendance & Leave Overview', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                    const SizedBox(height: 12),
+                    _buildProfileRow('Present Days (This Month)', '$monthlyPresent day(s)'),
+                    _buildProfileRow('Earned Leave Balance', '${leaveMap?['balance'] ?? 0} day(s)'),
+                    if (salaryMap != null) ...[
+                      const SizedBox(height: 16),
+                      const Text('Salary Configuration', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                      const SizedBox(height: 12),
+                      _buildProfileRow(
+                        'Salary Type',
+                        salaryMap['salary_type'] == 'fixed_monthly' ? 'Fixed Monthly' : 'Daily Wages',
+                      ),
+                      if (salaryMap['salary_type'] == 'fixed_monthly')
+                        _buildProfileRow('Monthly Basic', '₹${salaryMap['monthly_basic_salary'] ?? 0}')
+                      else
+                        _buildProfileRow('Daily Rate', salaryMap['daily_wage_override'] != null ? '₹${salaryMap['daily_wage_override']}' : 'Common Rate'),
+                    ],
+                    if (activeAdvances.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      const Text('Active Salary Advances', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                      const SizedBox(height: 12),
+                      ...activeAdvances.map((adv) => _buildProfileRow(
+                        'Advance #${adv['id']} (${adv['recovery_type'] == 'single' ? 'Single' : '${adv['total_installments']} EMIs'})',
+                        'Remaining: ₹${adv['remaining_balance']}',
+                      )),
+                    ],
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.info,
+                              side: const BorderSide(color: AppColors.info),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            icon: const Icon(Icons.assignment_ind, size: 18),
+                            label: const Text('View Attendance'),
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AdminEmployeeAttendanceScreen(employee: user),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.info,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            icon: const Icon(Icons.edit, size: 18, color: Colors.white),
+                            label: const Text('Edit Details', style: TextStyle(color: Colors.white)),
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _showEditUserModal(user);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildProfileRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 13)),
+          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
 }

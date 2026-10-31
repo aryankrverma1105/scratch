@@ -839,6 +839,161 @@ function initDatabase() {
         }
       },
     },
+    {
+      version: 9,
+      name: 'monthly_salary_advances_backups_audit_and_calendar_leave',
+      up: async () => {
+        const pkDef = isPostgres ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+        const tsDef = isPostgres ? 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' : 'DATETIME DEFAULT CURRENT_TIMESTAMP';
+
+        // 1. Update salary_settings for calendar-month system starting 1 Nov 2026
+        try {
+          await run(`
+            UPDATE salary_settings
+            SET cycle_start_day = 1,
+                official_start_date = '2026-11-01'
+          `);
+        } catch (_) {}
+
+        // 2. Ensure salary_advances table exists
+        await run(`
+          CREATE TABLE IF NOT EXISTS salary_advances (
+            id ${pkDef},
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            amount REAL NOT NULL,
+            purpose TEXT,
+            disbursement_date VARCHAR(20) NOT NULL,
+            recovery_type VARCHAR(20) NOT NULL DEFAULT 'emi',
+            total_installments INTEGER NOT NULL DEFAULT 1,
+            monthly_installment_amount REAL NOT NULL,
+            total_recovered REAL NOT NULL DEFAULT 0,
+            remaining_balance REAL NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'active',
+            approved_by INTEGER REFERENCES users(id),
+            notes TEXT,
+            created_at ${tsDef},
+            updated_at ${tsDef}
+          )
+        `);
+        try { await run(`CREATE INDEX IF NOT EXISTS idx_advances_user ON salary_advances(user_id)`); } catch (_) {}
+        try { await run(`CREATE INDEX IF NOT EXISTS idx_advances_status ON salary_advances(status)`); } catch (_) {}
+
+        // 3. Ensure salary_advance_emis table exists
+        await run(`
+          CREATE TABLE IF NOT EXISTS salary_advance_emis (
+            id ${pkDef},
+            advance_id INTEGER NOT NULL REFERENCES salary_advances(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            installment_number INTEGER NOT NULL,
+            due_month VARCHAR(10) NOT NULL,
+            due_cycle_code VARCHAR(50),
+            scheduled_amount REAL NOT NULL,
+            deducted_amount REAL NOT NULL DEFAULT 0,
+            status VARCHAR(30) NOT NULL DEFAULT 'pending',
+            payroll_record_id INTEGER REFERENCES payroll_records(id),
+            deducted_at ${tsDef},
+            notes TEXT,
+            created_at ${tsDef}
+          )
+        `);
+        try { await run(`CREATE INDEX IF NOT EXISTS idx_advance_emis_adv ON salary_advance_emis(advance_id)`); } catch (_) {}
+        try { await run(`CREATE INDEX IF NOT EXISTS idx_advance_emis_user_month ON salary_advance_emis(user_id, due_month)`); } catch (_) {}
+        try { await run(`CREATE INDEX IF NOT EXISTS idx_advance_emis_status ON salary_advance_emis(status)`); } catch (_) {}
+
+        // 4. Enhance payroll_records with advance deduction column
+        try { await run(`ALTER TABLE payroll_records ADD COLUMN advance_deduction REAL DEFAULT 0`); } catch (_) {}
+
+        // 5. Ensure backup_destinations table exists
+        await run(`
+          CREATE TABLE IF NOT EXISTS backup_destinations (
+            id ${pkDef},
+            name VARCHAR(100) NOT NULL,
+            drive_type VARCHAR(50) NOT NULL DEFAULT 'google_drive',
+            folder_id VARCHAR(255),
+            client_id TEXT,
+            client_secret TEXT,
+            refresh_token TEXT,
+            access_token TEXT,
+            token_expiry ${tsDef},
+            account_email VARCHAR(255),
+            is_enabled INTEGER NOT NULL DEFAULT 1,
+            last_test_status VARCHAR(50),
+            last_test_message TEXT,
+            last_test_at ${tsDef},
+            created_at ${tsDef},
+            updated_at ${tsDef}
+          )
+        `);
+
+        // 6. Ensure backup_records table exists
+        await run(`
+          CREATE TABLE IF NOT EXISTS backup_records (
+            id ${pkDef},
+            backup_type VARCHAR(50) NOT NULL DEFAULT 'daily_cron',
+            filename VARCHAR(255) NOT NULL,
+            file_size INTEGER NOT NULL DEFAULT 0,
+            destination_id INTEGER REFERENCES backup_destinations(id),
+            destination_name VARCHAR(100),
+            google_file_id VARCHAR(255),
+            status VARCHAR(50) NOT NULL DEFAULT 'success',
+            error_message TEXT,
+            created_at ${tsDef}
+          )
+        `);
+        try { await run(`CREATE INDEX IF NOT EXISTS idx_backup_rec_dest ON backup_records(destination_id)`); } catch (_) {}
+
+        // 7. Enhance activity_logs with module, before/after diffs, device info
+        try { await run(`ALTER TABLE activity_logs ADD COLUMN module VARCHAR(50)`); } catch (_) {}
+        try { await run(`ALTER TABLE activity_logs ADD COLUMN before_values TEXT`); } catch (_) {}
+        try { await run(`ALTER TABLE activity_logs ADD COLUMN after_values TEXT`); } catch (_) {}
+        try { await run(`ALTER TABLE activity_logs ADD COLUMN device_info TEXT`); } catch (_) {}
+        try { await run(`ALTER TABLE activity_logs ADD COLUMN status VARCHAR(30) DEFAULT 'success'`); } catch (_) {}
+        try { await run(`CREATE INDEX IF NOT EXISTS idx_activity_logs_module ON activity_logs(module)`); } catch (_) {}
+
+        // 8. Ensure Calendar Leave Year 2026 exists
+        try {
+          const ly2026 = await get(`SELECT id FROM leave_years WHERE code = '2026'`);
+          if (!ly2026) {
+            if (isPostgres) {
+              await run(
+                `INSERT INTO leave_years (code, start_date, end_date, is_active)
+                 VALUES ('2026', '2026-01-01', '2026-12-31', 1)
+                 ON CONFLICT (code) DO UPDATE SET is_active = 1`
+              );
+            } else {
+              await run(
+                `INSERT OR IGNORE INTO leave_years (code, start_date, end_date, is_active)
+                 VALUES ('2026', '2026-01-01', '2026-12-31', 1)`
+              );
+            }
+          }
+        } catch (lyErr) {
+          console.warn('Calendar leave year 2026 seed warning:', lyErr.message);
+        }
+
+        // 9. Transition November 2026 calendar cycle
+        try {
+          const calNov = await get(`SELECT id FROM salary_cycles WHERE cycle_code = '2026-11-01_2026-11-30'`);
+          if (!calNov) {
+            if (isPostgres) {
+              await run(
+                `INSERT INTO salary_cycles (cycle_code, start_date, end_date, status)
+                 VALUES ('2026-11-01_2026-11-30', '2026-11-01', '2026-11-30', 'active')
+                 ON CONFLICT (cycle_code) DO NOTHING`
+              );
+            } else {
+              await run(
+                `INSERT OR IGNORE INTO salary_cycles (cycle_code, start_date, end_date, status)
+                 VALUES ('2026-11-01_2026-11-30', '2026-11-01', '2026-11-30', 'active')`
+              );
+            }
+          }
+          await run(`DELETE FROM salary_cycles WHERE cycle_code = '2026-11-03_2026-12-02' AND total_disbursed = 0 AND (SELECT COUNT(*) FROM salary_payments WHERE cycle_code = '2026-11-03_2026-12-02') = 0`);
+        } catch (cErr) {
+          console.warn('November calendar cycle migration warning:', cErr.message);
+        }
+      },
+    },
   ];
 
   for (const m of migrations) {

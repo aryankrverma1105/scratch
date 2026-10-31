@@ -113,6 +113,25 @@ async function accrueMonthlyLeaves(yearMonth, force = false) {
 
     if (existing) continue;
 
+    // 26 Present Days Eligibility Check for Salaried Employees (Requirement 8)
+    const empConfig = await db.get('SELECT salary_type FROM employee_salary_configs WHERE user_id = ?', [user.id]);
+    if (empConfig && empConfig.salary_type === 'fixed_monthly') {
+      const yearStartStr = `${leaveYearCode.split('-')[0]}-01-01`;
+      const monthEndStr = `${yearMonth}-31`;
+      const presentCountRow = await db.get(
+        `SELECT COUNT(DISTINCT date) as count
+         FROM attendance
+         WHERE user_id = ? AND date >= ? AND date <= ?
+           AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))`,
+        [user.id, yearStartStr, monthEndStr]
+      );
+      const cumulativePresent = presentCountRow?.count || 0;
+      if (cumulativePresent < 26) {
+        // Does not meet 26 cumulative present days eligibility condition
+        continue;
+      }
+    }
+
     await db.withTransaction(async (tx) => {
       // 1. Insert accrual
       await tx.run(

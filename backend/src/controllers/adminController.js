@@ -364,10 +364,10 @@ async function getUserRouteHistory(req, res) {
   }
 }
 
-// Attendance overview report
+// Attendance overview report with search and Total Employees Present count
 async function getAllAttendance(req, res) {
   try {
-    const { date, userId, limit = 100 } = req.query;
+    const { date, userId, search, limit = 100 } = req.query;
     let sql = `
       SELECT a.*, u.full_name, u.email, u.department
       FROM attendance a
@@ -384,14 +384,102 @@ async function getAllAttendance(req, res) {
       sql += ' AND a.user_id = ?';
       params.push(userId);
     }
+    if (search && search.trim()) {
+      const term = `%${search.trim()}%`;
+      sql += ' AND (u.full_name LIKE ? OR u.email LIKE ? OR CAST(u.id AS TEXT) LIKE ?)';
+      params.push(term, term, term);
+    }
 
     sql += ' ORDER BY a.check_in_time DESC LIMIT ?';
     params.push(parseInt(limit, 10));
 
     const records = await db.query(sql, params);
-    return res.json({ records });
+
+    // Compute distinct total present employees for the selected date
+    let totalPresent = 0;
+    if (date) {
+      const presentRow = await db.get(
+        `SELECT COUNT(DISTINCT user_id) as count
+         FROM attendance
+         WHERE date = ? AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))`,
+        [date]
+      );
+      totalPresent = presentRow?.count || 0;
+    } else {
+      const todayStr = new Date().toISOString().substring(0, 10);
+      const presentRow = await db.get(
+        `SELECT COUNT(DISTINCT user_id) as count
+         FROM attendance
+         WHERE date = ? AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))`,
+        [todayStr]
+      );
+      totalPresent = presentRow?.count || 0;
+    }
+
+    return res.json({ records, totalPresent });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to fetch attendance', details: error.message });
+  }
+}
+
+// Full profile inspection for any user or admin (without exposing passwords)
+async function getUserProfile(req, res) {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    const user = await db.get(
+      `SELECT id, full_name, email, role, department, phone, is_active,
+              joining_date, exit_date, created_at
+       FROM users WHERE id = ?`,
+      [userId]
+    );
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Attendance stats
+    const todayStr = new Date().toISOString().substring(0, 10);
+    const todayAttendance = await db.get(
+      'SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY id DESC LIMIT 1',
+      [userId, todayStr]
+    );
+
+    const monthStart = todayStr.substring(0, 7) + '-01';
+    const presentMonth = await db.get(
+      `SELECT COUNT(DISTINCT date) as count
+       FROM attendance
+       WHERE user_id = ? AND date >= ? AND date <= ? AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))`,
+      [userId, monthStart, todayStr]
+    );
+
+    // Leave balance
+    const currentYear = todayStr.substring(0, 4);
+    const leaveBalance = await db.get(
+      'SELECT * FROM leave_balances WHERE user_id = ? AND (leave_year = ? OR leave_year LIKE ?) ORDER BY id DESC LIMIT 1',
+      [userId, currentYear, `${currentYear}%`]
+    );
+
+    // Salary Config
+    const salaryConfig = await db.get(
+      'SELECT * FROM employee_salary_configs WHERE user_id = ?',
+      [userId]
+    );
+
+    // Advances
+    const activeAdvances = await db.query(
+      "SELECT * FROM salary_advances WHERE user_id = ? AND status IN ('active', 'paused') ORDER BY id DESC",
+      [userId]
+    );
+
+    return res.json({
+      user,
+      todayAttendance: todayAttendance || null,
+      monthlyPresentDays: presentMonth?.count || 0,
+      leaveBalance: leaveBalance || null,
+      salaryConfig: salaryConfig || null,
+      activeAdvances: activeAdvances || [],
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to fetch user profile', details: error.message });
   }
 }
 
@@ -440,6 +528,7 @@ module.exports = {
   getLiveLocations,
   getUserRouteHistory,
   getAllAttendance,
+  getUserProfile,
   getGpsAlerts,
   resolveGpsAlert,
   isRootSuperAdmin,

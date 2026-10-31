@@ -54,17 +54,17 @@ function initLeaveCronJobs() {
     { timezone: timeZone }
   );
 
-  // 3. Annual Leave Year Transition: Runs on 1 April at 00:01 AM IST
+  // 3. Annual Leave Year Transition: Runs on 1 January at 00:01 AM IST (Calendar Year Reset)
   // Closes previous leave year, expires unused earned leaves, initializes new leave year
   cron.schedule(
-    '1 0 1 4 *',
+    '1 0 1 1 *',
     async () => {
-      console.log('⏰ [LEAVE-CRON] Running annual 1 April leave year reset transition...');
+      console.log('⏰ [LEAVE-CRON] Running annual 1 January calendar leave year reset transition...');
       try {
         const todayStr = getCompanyDate(new Date(), timeZone);
         const [curYear] = todayStr.split('-').map(Number);
-        const prevYearCode = `${curYear - 1}-${curYear}`;
-        const newYearCode = `${curYear}-${curYear + 1}`;
+        const prevYearCode = String(curYear - 1);
+        const newYearCode = String(curYear);
         const res = await leaveService.performAnnualLeaveYearReset(prevYearCode, newYearCode);
         console.log(`✅ [LEAVE-CRON] Annual reset from ${prevYearCode} to ${newYearCode} finished:`, res);
       } catch (err) {

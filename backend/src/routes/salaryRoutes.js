@@ -11,6 +11,7 @@ router.get('/my-salary', salaryController.getMySalary);
 router.get('/my-incentives', salaryController.getMyIncentives);
 router.get('/my-overtime', salaryController.getMyOvertime);
 router.get('/my-history', salaryController.getMyPayrollHistory);
+router.get('/my-advances', salaryController.getMyAdvances);
 
 // Admin-only routes
 router.get('/admin/settings', requireRole('admin'), salaryController.getSettings);
@@ -35,6 +36,15 @@ router.get('/admin/payroll/preview', requireRole('admin'), salaryController.prev
 router.post('/admin/payroll/finalize', requireRole('admin'), salaryController.finalizePayroll);
 router.get('/admin/payroll/export', requireRole('admin'), salaryController.exportPayrollCsv);
 router.get('/admin/payroll/records', requireRole('admin'), salaryController.getPayrollRecords);
+
+
+// Salary Advances & EMI Management (Requirement 3)
+router.get('/admin/advances', requireRole('admin'), salaryController.listAdvances);
+router.post('/admin/advances', requireRole('admin'), salaryController.createAdvance);
+router.get('/admin/advances/:id', requireRole('admin'), salaryController.getAdvanceDetails);
+router.put('/admin/advances/:id/pause', requireRole('admin'), salaryController.pauseAdvance);
+router.put('/admin/advances/:id/resume', requireRole('admin'), salaryController.resumeAdvance);
+router.post('/admin/advances/:id/settle', requireRole('admin'), salaryController.settleAdvance);
 
 // Salary Cycles & Disbursement Batches
 router.get('/admin/cycles/active', requireRole('admin'), salaryController.getActiveCycle);

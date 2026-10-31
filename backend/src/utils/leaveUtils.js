@@ -18,26 +18,30 @@ function getLeaveYear(dateInput) {
     dateStr = getCompanyDate();
   }
 
-  const [year, month] = dateStr.split('-').map(Number);
-  if (month >= 4) {
-    return `${year}-${year + 1}`;
-  } else {
-    return `${year - 1}-${year}`;
-  }
+  const [year] = dateStr.split('-').map(Number);
+  return `${year}`;
 }
 
 /**
- * Get start and end date of a leave year
- * @param {string} leaveYearCode '2026-2027'
+ * Get start and end date of a leave year (supports Calendar year YYYY and legacy YYYY-YYYY)
+ * @param {string} leaveYearCode '2026' or '2026-2027'
  * @returns {{ startDate: string, endDate: string }}
  */
 function getLeaveYearRange(leaveYearCode) {
-  const parts = (leaveYearCode || getLeaveYear()).split('-');
-  const startYear = parseInt(parts[0], 10);
-  const endYear = parseInt(parts[1], 10);
+  const code = leaveYearCode || getLeaveYear();
+  if (code.includes('-')) {
+    const parts = code.split('-');
+    const startYear = parseInt(parts[0], 10);
+    const endYear = parseInt(parts[1], 10);
+    return {
+      startDate: `${startYear}-04-01`,
+      endDate: `${endYear}-03-31`,
+    };
+  }
+  const year = parseInt(code, 10);
   return {
-    startDate: `${startYear}-04-01`,
-    endDate: `${endYear}-03-31`,
+    startDate: `${year}-01-01`,
+    endDate: `${year}-12-31`,
   };
 }
 
@@ -234,18 +238,25 @@ function isMonthCompleted(yearMonth, currentDateStr = getCompanyDate()) {
  * @returns {string[]}
  */
 function getMonthsInLeaveYear(leaveYearCode) {
-  const parts = (leaveYearCode || getLeaveYear()).split('-');
-  const startYear = parseInt(parts[0], 10);
-  const endYear = parseInt(parts[1], 10);
+  const code = leaveYearCode || getLeaveYear();
+  if (code.includes('-')) {
+    const parts = code.split('-');
+    const startYear = parseInt(parts[0], 10);
+    const endYear = parseInt(parts[1], 10);
+    const months = [];
+    for (let m = 4; m <= 12; m++) {
+      months.push(`${startYear}-${String(m).padStart(2, '0')}`);
+    }
+    for (let m = 1; m <= 3; m++) {
+      months.push(`${endYear}-${String(m).padStart(2, '0')}`);
+    }
+    return months;
+  }
+  const year = parseInt(code, 10);
   const months = [];
-
-  for (let m = 4; m <= 12; m++) {
-    months.push(`${startYear}-${String(m).padStart(2, '0')}`);
+  for (let m = 1; m <= 12; m++) {
+    months.push(`${year}-${String(m).padStart(2, '0')}`);
   }
-  for (let m = 1; m <= 3; m++) {
-    months.push(`${endYear}-${String(m).padStart(2, '0')}`);
-  }
-
   return months;
 }
 

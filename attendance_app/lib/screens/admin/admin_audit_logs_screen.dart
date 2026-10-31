@@ -19,6 +19,18 @@ class _AdminAuditLogsScreenState extends State<AdminAuditLogsScreen> {
   int _totalPages = 1;
   int _total = 0;
   String? _selectedFilter;
+  String? _selectedModule;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  final List<Map<String, String>> _modules = [
+    {'label': 'All Modules', 'value': ''},
+    {'label': 'Salary & Advances', 'value': 'salary'},
+    {'label': 'Attendance', 'value': 'attendance'},
+    {'label': 'Users & Roles', 'value': 'users'},
+    {'label': 'Leave & Holidays', 'value': 'leave'},
+    {'label': 'Database Backups', 'value': 'backup'},
+  ];
 
   final List<String> _filters = [
     'ALL',
@@ -26,10 +38,13 @@ class _AdminAuditLogsScreenState extends State<AdminAuditLogsScreen> {
     'USER_UPDATED',
     'USER_DELETED',
     'SALARY_CONFIG_SAVED',
+    'SALARY_ADVANCE_CREATED',
     'COMMON_DAILY_WAGE_UPDATED',
     'INCENTIVE_CREATED',
     'OVERTIME_RECORDED',
     'PAYROLL_FINALIZED',
+    'BACKUP_DESTINATION_CREATED',
+    'MANUAL_BACKUP_EXECUTED',
   ];
 
   @override
@@ -48,7 +63,9 @@ class _AdminAuditLogsScreenState extends State<AdminAuditLogsScreen> {
       final res = await ApiService().getActivityLogs(
         page: page,
         limit: 50,
-        action: _selectedFilter == 'ALL' ? null : _selectedFilter,
+        action: (_selectedFilter == null || _selectedFilter == 'ALL') ? null : _selectedFilter,
+        module: (_selectedModule == null || _selectedModule!.isEmpty) ? null : _selectedModule,
+        search: _searchQuery.isEmpty ? null : _searchQuery,
       );
 
       if (mounted) {

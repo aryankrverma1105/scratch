@@ -88,53 +88,56 @@ void main() {
       expect(payment.status, 'partial');
     });
 
-    test('SalaryCalculationModel getters for cycle dates and cap enforcement', () {
-      final json = {
-        'userId': 2,
-        'fullName': 'Suresh Patel',
-        'email': 'suresh@sologix.in',
-        'payrollPeriod': '2026-11-03_2026-12-02',
-        'cycleCode': '2026-11-03_2026-12-02',
-        'startDate': '2026-11-03',
-        'endDate': '2026-12-02',
-        'salaryType': 'fixed_monthly',
-        'baseRate': 26000.0,
-        'configuredMonthlyCap': 26000.0,
-        'hasConfig': true,
-        'totalWorkingDays': 26.0,
-        'presentDays': 24.0,
-        'paidLeaveDays': 0.0,
-        'payableDays': 24.0,
-        'absentDays': 2.0,
-        'excessAbsentDays': 0.0,
-        'basicSalary': 26000.0,
-        'incentiveSalary': 0.0,
-        'overtimeHours': 0.0,
-        'overtimeAmount': 0.0,
-        'grossSalary': 26000.0,
-        'employeeEpf': 0.0,
-        'employeeEsic': 0.0,
-        'totalDeductions': 1300.0,
-        'gratuityDeduction': 1300.0,
-        'netSalary': 24700.0,
-        'employerEpf': 0.0,
-        'employerEsic': 0.0,
-        'ctc': 26000.0,
-        'amountDisbursed': 0.0,
-        'remainingPayable': 24700.0,
-        'paymentStatus': 'draft',
-        'isFinalized': false,
-      };
+    test(
+      'SalaryCalculationModel getters for cycle dates and cap enforcement',
+      () {
+        final json = {
+          'userId': 2,
+          'fullName': 'Suresh Patel',
+          'email': 'suresh@sologix.in',
+          'payrollPeriod': '2026-11-03_2026-12-02',
+          'cycleCode': '2026-11-03_2026-12-02',
+          'startDate': '2026-11-03',
+          'endDate': '2026-12-02',
+          'salaryType': 'fixed_monthly',
+          'baseRate': 26000.0,
+          'configuredMonthlyCap': 26000.0,
+          'hasConfig': true,
+          'totalWorkingDays': 26.0,
+          'presentDays': 24.0,
+          'paidLeaveDays': 0.0,
+          'payableDays': 24.0,
+          'absentDays': 2.0,
+          'excessAbsentDays': 0.0,
+          'basicSalary': 26000.0,
+          'incentiveSalary': 0.0,
+          'overtimeHours': 0.0,
+          'overtimeAmount': 0.0,
+          'grossSalary': 26000.0,
+          'employeeEpf': 0.0,
+          'employeeEsic': 0.0,
+          'totalDeductions': 1300.0,
+          'gratuityDeduction': 1300.0,
+          'netSalary': 24700.0,
+          'employerEpf': 0.0,
+          'employerEsic': 0.0,
+          'ctc': 26000.0,
+          'amountDisbursed': 0.0,
+          'remainingPayable': 24700.0,
+          'paymentStatus': 'draft',
+          'isFinalized': false,
+        };
 
-      final calc = SalaryCalculationModel.fromJson(json);
+        final calc = SalaryCalculationModel.fromJson(json);
 
-      expect(calc.cycleStartDate, '2026-11-03');
-      expect(calc.cycleEndDate, '2026-12-02');
-      expect(calc.monthlySalaryCap, 26000.0);
-      expect(calc.grossSalary, 26000.0);
-      expect(calc.netSalary, 24700.0);
-      expect(calc.remainingPayable, 24700.0);
-      expect(calc.paymentStatus, 'draft');
-    });
+        expect(calc.cycleStartDate, '2026-11-03');
+        expect(calc.cycleEndDate, '2026-12-02');
+        expect(calc.monthlySalaryCap, 26000.0);
+        expect(calc.grossSalary, 26000.0);
+        expect(calc.netSalary, 24700.0);
+        expect(calc.remainingPayable, 24700.0);
+        expect(calc.paymentStatus, 'draft');
+      },
+    );
   });
 }

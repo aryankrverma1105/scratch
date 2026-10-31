@@ -3,8 +3,7 @@ node_modules/
 .npm
 
 # Database and uploads
-backend/data/*.db
-backend/data/*.db-journal
+backend/data/
 backend/uploads/selfies/*
 !backend/uploads/selfies/.gitkeep
 

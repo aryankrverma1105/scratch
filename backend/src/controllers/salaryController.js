@@ -787,6 +787,106 @@ async function getMyPayrollHistory(req, res) {
   }
 }
 
+
+// Salary Advances & EMI Controllers (Requirement 3)
+async function listAdvances(req, res) {
+  try {
+    const { userId, status, limit } = req.query;
+    const advances = await salaryService.listSalaryAdvances({
+      userId: userId ? parseInt(userId, 10) : undefined,
+      status,
+      limit: limit ? parseInt(limit, 10) : 50,
+    });
+    return res.json({ advances });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+async function createAdvance(req, res) {
+  try {
+    const { userId, amount, purpose, disbursementDate, recoveryType, totalInstallments, startMonth, notes } = req.body;
+    if (!userId || !amount) {
+      return res.status(400).json({ error: 'userId and amount are required' });
+    }
+    const result = await salaryService.createSalaryAdvance({
+      userId: parseInt(userId, 10),
+      amount,
+      purpose,
+      disbursementDate,
+      recoveryType,
+      totalInstallments,
+      startMonth,
+      notes,
+      adminId: req.user.id,
+    });
+    return res.status(201).json({
+      message: 'Salary advance recorded successfully',
+      ...result,
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+}
+
+async function getAdvanceDetails(req, res) {
+  try {
+    const advanceId = parseInt(req.params.id, 10);
+    const result = await salaryService.getSalaryAdvanceDetails(advanceId);
+    return res.json(result);
+  } catch (err) {
+    return res.status(404).json({ error: err.message });
+  }
+}
+
+async function pauseAdvance(req, res) {
+  try {
+    const advanceId = parseInt(req.params.id, 10);
+    const result = await salaryService.pauseSalaryAdvance(advanceId, req.user.id);
+    return res.json({ message: 'Salary advance paused', ...result });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+}
+
+async function resumeAdvance(req, res) {
+  try {
+    const advanceId = parseInt(req.params.id, 10);
+    const result = await salaryService.resumeSalaryAdvance(advanceId, req.user.id);
+    return res.json({ message: 'Salary advance resumed', ...result });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+}
+
+async function settleAdvance(req, res) {
+  try {
+    const advanceId = parseInt(req.params.id, 10);
+    const { settlementAmount, paymentMethod, paymentReference, notes } = req.body;
+    const result = await salaryService.settleSalaryAdvanceEarly({
+      advanceId,
+      settlementAmount,
+      paymentMethod,
+      paymentReference,
+      notes,
+      adminId: req.user.id,
+    });
+    return res.json({ message: 'Salary advance settled early', ...result });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+}
+
+async function getMyAdvances(req, res) {
+  try {
+    const userId = req.user.id;
+    const result = await salaryService.getEmployeeAdvances(userId);
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+}
+
 module.exports = {
   getSettings,
   updateSettings,
@@ -813,5 +913,12 @@ module.exports = {
   getMySalary,
   getMyIncentives,
   getMyOvertime,
+  listAdvances,
+  createAdvance,
+  getAdvanceDetails,
+  pauseAdvance,
+  resumeAdvance,
+  settleAdvance,
+  getMyAdvances,
   getMyPayrollHistory,
 };

@@ -406,6 +406,7 @@ class SalaryCalculationModel {
   final double employeeEsic;
   final double totalDeductions;
   final double gratuityDeduction;
+  final double advanceDeduction;
   final double netSalary;
   final double employerEpf;
   final double employerEsic;
@@ -450,6 +451,7 @@ class SalaryCalculationModel {
     required this.employeeEsic,
     required this.totalDeductions,
     required this.gratuityDeduction,
+    this.advanceDeduction = 0.0,
     required this.netSalary,
     required this.employerEpf,
     required this.employerEsic,
@@ -510,6 +512,7 @@ class SalaryCalculationModel {
       employeeEsic: toDbl(json['employeeEsic'] ?? json['employee_esic']),
       totalDeductions: toDbl(json['totalDeductions'] ?? json['total_employee_deductions']),
       gratuityDeduction: toDbl(json['gratuityDeduction'] ?? json['gratuity_deduction']),
+      advanceDeduction: toDbl(json['advanceDeduction'] ?? json['advance_deduction']),
       netSalary: toDbl(json['netSalary'] ?? json['net_salary']),
       employerEpf: toDbl(json['employerEpf'] ?? json['employer_epf']),
       employerEsic: toDbl(json['employerEsic'] ?? json['employer_esic']),
@@ -530,9 +533,13 @@ class ActivityLogModel {
   final String userName;
   final String role;
   final String action;
+  final String? module;
   final String? entityType;
   final String? entityId;
   final String? details;
+  final String? beforeValues;
+  final String? afterValues;
+  final String? status;
   final String? ipAddress;
   final int? targetUserId;
   final String? targetUserName;
@@ -544,9 +551,13 @@ class ActivityLogModel {
     required this.userName,
     required this.role,
     required this.action,
+    this.module,
     this.entityType,
     this.entityId,
     this.details,
+    this.beforeValues,
+    this.afterValues,
+    this.status,
     this.ipAddress,
     this.targetUserId,
     this.targetUserName,
@@ -567,7 +578,11 @@ class ActivityLogModel {
       userName: json['user_name']?.toString() ?? 'System',
       role: json['role']?.toString() ?? 'admin',
       action: json['action']?.toString() ?? 'ACTION',
+      module: json['module']?.toString(),
       entityType: json['entity_type']?.toString(),
+      beforeValues: json['before_values']?.toString(),
+      afterValues: json['after_values']?.toString(),
+      status: json['status']?.toString() ?? 'success',
       entityId: json['entity_id']?.toString(),
       details: json['details']?.toString(),
       ipAddress: json['ip_address']?.toString(),
@@ -576,6 +591,217 @@ class ActivityLogModel {
           : int.tryParse(json['target_user_id']?.toString() ?? '0'),
       targetUserName: json['target_user_name']?.toString(),
       createdAt: parseDt(json['created_at']),
+    );
+  }
+}
+
+
+class SalaryAdvanceModel {
+  final int id;
+  final int userId;
+  final String? fullName;
+  final String? email;
+  final String? department;
+  final double amount;
+  final String? purpose;
+  final String disbursementDate;
+  final String recoveryType; // 'single' | 'emi'
+  final int totalInstallments;
+  final double monthlyInstallmentAmount;
+  final double totalRecovered;
+  final double remainingBalance;
+  final String status; // 'active' | 'paused' | 'completed' | 'cancelled'
+  final String? notes;
+  final String? createdAt;
+
+  SalaryAdvanceModel({
+    required this.id,
+    required this.userId,
+    this.fullName,
+    this.email,
+    this.department,
+    required this.amount,
+    this.purpose,
+    required this.disbursementDate,
+    required this.recoveryType,
+    required this.totalInstallments,
+    required this.monthlyInstallmentAmount,
+    this.totalRecovered = 0.0,
+    required this.remainingBalance,
+    required this.status,
+    this.notes,
+    this.createdAt,
+  });
+
+  factory SalaryAdvanceModel.fromJson(Map<String, dynamic> json) {
+    double toDbl(dynamic val) {
+      if (val == null) return 0.0;
+      if (val is num) return val.toDouble();
+      return double.tryParse(val.toString()) ?? 0.0;
+    }
+
+    return SalaryAdvanceModel(
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      userId: json['user_id'] is int ? json['user_id'] : int.tryParse(json['user_id']?.toString() ?? '0') ?? 0,
+      fullName: json['full_name']?.toString() ?? json['fullName']?.toString(),
+      email: json['email']?.toString(),
+      department: json['department']?.toString(),
+      amount: toDbl(json['amount']),
+      purpose: json['purpose']?.toString(),
+      disbursementDate: json['disbursement_date']?.toString() ?? json['disbursementDate']?.toString() ?? '',
+      recoveryType: json['recovery_type']?.toString() ?? json['recoveryType']?.toString() ?? 'emi',
+      totalInstallments: json['total_installments'] is int
+          ? json['total_installments']
+          : int.tryParse((json['total_installments'] ?? json['totalInstallments'])?.toString() ?? '1') ?? 1,
+      monthlyInstallmentAmount: toDbl(json['monthly_installment_amount'] ?? json['monthlyInstallmentAmount']),
+      totalRecovered: toDbl(json['total_recovered'] ?? json['totalRecovered']),
+      remainingBalance: toDbl(json['remaining_balance'] ?? json['remainingBalance']),
+      status: json['status']?.toString() ?? 'active',
+      notes: json['notes']?.toString(),
+      createdAt: json['created_at']?.toString() ?? json['createdAt']?.toString(),
+    );
+  }
+}
+
+class SalaryAdvanceEmiModel {
+  final int id;
+  final int advanceId;
+  final int userId;
+  final int installmentNumber;
+  final String dueMonth; // YYYY-MM
+  final double scheduledAmount;
+  final double deductedAmount;
+  final String status; // 'pending' | 'deducted' | 'paused' | 'insufficient_salary' | 'settled_early'
+  final String? deductedAt;
+  final String? notes;
+
+  SalaryAdvanceEmiModel({
+    required this.id,
+    required this.advanceId,
+    required this.userId,
+    required this.installmentNumber,
+    required this.dueMonth,
+    required this.scheduledAmount,
+    this.deductedAmount = 0.0,
+    required this.status,
+    this.deductedAt,
+    this.notes,
+  });
+
+  factory SalaryAdvanceEmiModel.fromJson(Map<String, dynamic> json) {
+    double toDbl(dynamic val) {
+      if (val == null) return 0.0;
+      if (val is num) return val.toDouble();
+      return double.tryParse(val.toString()) ?? 0.0;
+    }
+
+    return SalaryAdvanceEmiModel(
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      advanceId: json['advance_id'] is int
+          ? json['advance_id']
+          : int.tryParse((json['advance_id'] ?? json['advanceId'])?.toString() ?? '0') ?? 0,
+      userId: json['user_id'] is int ? json['user_id'] : int.tryParse(json['user_id']?.toString() ?? '0') ?? 0,
+      installmentNumber: json['installment_number'] is int
+          ? json['installment_number']
+          : int.tryParse((json['installment_number'] ?? json['installmentNumber'])?.toString() ?? '1') ?? 1,
+      dueMonth: json['due_month']?.toString() ?? json['dueMonth']?.toString() ?? '',
+      scheduledAmount: toDbl(json['scheduled_amount'] ?? json['scheduledAmount']),
+      deductedAmount: toDbl(json['deducted_amount'] ?? json['deductedAmount']),
+      status: json['status']?.toString() ?? 'pending',
+      deductedAt: json['deducted_at']?.toString() ?? json['deductedAt']?.toString(),
+      notes: json['notes']?.toString(),
+    );
+  }
+}
+
+class BackupDestinationModel {
+  final int id;
+  final String name;
+  final String driveType;
+  final String? folderId;
+  final String? accountEmail;
+  final bool isEnabled;
+  final String? lastTestStatus;
+  final String? lastTestMessage;
+  final String? lastTestAt;
+  final String? createdAt;
+
+  BackupDestinationModel({
+    required this.id,
+    required this.name,
+    this.driveType = 'google_drive',
+    this.folderId,
+    this.accountEmail,
+    this.isEnabled = true,
+    this.lastTestStatus,
+    this.lastTestMessage,
+    this.lastTestAt,
+    this.createdAt,
+  });
+
+  factory BackupDestinationModel.fromJson(Map<String, dynamic> json) {
+    return BackupDestinationModel(
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      name: json['name']?.toString() ?? 'Google Drive',
+      driveType: json['drive_type']?.toString() ?? json['driveType']?.toString() ?? 'google_drive',
+      folderId: json['folder_id']?.toString() ?? json['folderId']?.toString(),
+      accountEmail: json['account_email']?.toString() ?? json['accountEmail']?.toString(),
+      isEnabled: json['is_enabled'] == 1 || json['is_enabled'] == true || json['isEnabled'] == true,
+      lastTestStatus: json['last_test_status']?.toString() ?? json['lastTestStatus']?.toString(),
+      lastTestMessage: json['last_test_message']?.toString() ?? json['lastTestMessage']?.toString(),
+      lastTestAt: json['last_test_at']?.toString() ?? json['lastTestAt']?.toString(),
+      createdAt: json['created_at']?.toString() ?? json['createdAt']?.toString(),
+    );
+  }
+}
+
+class BackupRecordModel {
+  final int id;
+  final String backupType; // 'daily_cron' | 'manual'
+  final String filename;
+  final int fileSize;
+  final int? destinationId;
+  final String destinationName;
+  final String? googleFileId;
+  final String status; // 'success' | 'failed'
+  final String? errorMessage;
+  final String createdAt;
+
+  BackupRecordModel({
+    required this.id,
+    required this.backupType,
+    required this.filename,
+    required this.fileSize,
+    this.destinationId,
+    required this.destinationName,
+    this.googleFileId,
+    required this.status,
+    this.errorMessage,
+    required this.createdAt,
+  });
+
+  String get formattedSize {
+    if (fileSize < 1024) return '$fileSize B';
+    if (fileSize < 1024 * 1024) return '${(fileSize / 1024).toStringAsFixed(1)} KB';
+    return '${(fileSize / (1024 * 1024)).toStringAsFixed(2)} MB';
+  }
+
+  factory BackupRecordModel.fromJson(Map<String, dynamic> json) {
+    return BackupRecordModel(
+      id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
+      backupType: json['backup_type']?.toString() ?? json['backupType']?.toString() ?? 'daily_cron',
+      filename: json['filename']?.toString() ?? 'backup.db.gz',
+      fileSize: json['file_size'] is int
+          ? json['file_size']
+          : int.tryParse((json['file_size'] ?? json['fileSize'])?.toString() ?? '0') ?? 0,
+      destinationId: json['destination_id'] is int
+          ? json['destination_id']
+          : int.tryParse(json['destination_id']?.toString() ?? ''),
+      destinationName: json['destination_name']?.toString() ?? json['destinationName']?.toString() ?? 'Google Drive',
+      googleFileId: json['google_file_id']?.toString() ?? json['googleFileId']?.toString(),
+      status: json['status']?.toString() ?? 'success',
+      errorMessage: json['error_message']?.toString() ?? json['errorMessage']?.toString(),
+      createdAt: json['created_at']?.toString() ?? json['createdAt']?.toString() ?? '',
     );
   }
 }

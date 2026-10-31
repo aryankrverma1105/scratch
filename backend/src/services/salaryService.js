@@ -57,12 +57,27 @@ function getDatesInDateRange(startDateStr, endDateStr) {
  * Standard cycle starts on cycleStartDay (default: 3) of month M at 00:00 IST
  * and ends on (cycleStartDay - 1) of month M + 1 (e.g. 3 Nov to 2 Dec).
  */
-function getSalaryCycleForDate(dateStr, cycleStartDay = 3) {
+function getSalaryCycleForDate(dateStr, cycleStartDay = 1) {
   const [yStr, mStr, dStr] = dateStr.split('-');
   const year = parseInt(yStr, 10);
   const month = parseInt(mStr, 10);
   const day = parseInt(dStr, 10);
 
+  // Normal calendar month cycle (1st to last day of every month)
+  if (cycleStartDay === 1 || !cycleStartDay) {
+    const lastDay = new Date(year, month, 0).getDate();
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const cycleCode = `${startDate}_${endDate}`;
+    return {
+      cycleCode,
+      startDate,
+      endDate,
+      label: `${startDate} to ${endDate}`,
+    };
+  }
+
+  // Fallback if custom start day is configured
   let startYear, startMonth;
   let nextCycleYear, nextCycleMonth;
 
@@ -77,7 +92,6 @@ function getSalaryCycleForDate(dateStr, cycleStartDay = 3) {
       nextCycleMonth = month + 1;
     }
   } else {
-    // Falls in cycle that started previous month
     if (month === 1) {
       startYear = year - 1;
       startMonth = 12;
@@ -90,8 +104,6 @@ function getSalaryCycleForDate(dateStr, cycleStartDay = 3) {
   }
 
   const startDate = `${startYear}-${String(startMonth).padStart(2, '0')}-${String(cycleStartDay).padStart(2, '0')}`;
-
-  // End date is 1 calendar day before next cycle start date
   const nextStartUtc = new Date(Date.UTC(nextCycleYear, nextCycleMonth - 1, cycleStartDay, 12, 0, 0));
   nextStartUtc.setUTCDate(nextStartUtc.getUTCDate() - 1);
   const endDate = `${nextStartUtc.getUTCFullYear()}-${String(nextStartUtc.getUTCMonth() + 1).padStart(2, '0')}-${String(nextStartUtc.getUTCDate()).padStart(2, '0')}`;
@@ -108,7 +120,7 @@ function getSalaryCycleForDate(dateStr, cycleStartDay = 3) {
 /**
  * Calculate the next salary cycle given a current cycle start date.
  */
-function getNextSalaryCycle(currentStartDateStr, cycleStartDay = 3) {
+function getNextSalaryCycle(currentStartDateStr, cycleStartDay = 1) {
   const [yStr, mStr] = currentStartDateStr.split('-');
   let year = parseInt(yStr, 10);
   let month = parseInt(mStr, 10);
@@ -132,7 +144,7 @@ function getNextSalaryCycle(currentStartDateStr, cycleStartDay = 3) {
 async function getSalarySettings() {
   let settings = await db.get('SELECT * FROM salary_settings ORDER BY id ASC LIMIT 1');
   if (!settings) {
-    await db.run("INSERT INTO salary_settings (common_daily_wage, official_start_date, cycle_start_day) VALUES (650.0, '2026-11-03', 3)");
+    await db.run("INSERT INTO salary_settings (common_daily_wage, official_start_date, cycle_start_day) VALUES (650.0, '2026-11-01', 1)");
     settings = await db.get('SELECT * FROM salary_settings ORDER BY id ASC LIMIT 1');
   }
   return settings;
@@ -188,6 +200,7 @@ async function updateSalarySettings(args, userId) {
  * Resolve whether a query string refers to a cycle or a legacy month.
  */
 async function resolveCycleOrPeriod(periodOrMonth) {
+  try { await autoReconcileSalaryCycles(); } catch (_) {}
   const settings = await getSalarySettings();
   const officialStartDate = settings.official_start_date || '2026-11-03';
   const cycleStartDay = settings.cycle_start_day || 3;
@@ -655,6 +668,43 @@ async function calculateSalaryForEmployee(userId, periodOrMonth) {
     employerEsic = 0;
   }
 
+  const cycleRecord = await db.get(
+    `SELECT pr.* FROM payroll_records pr
+     WHERE pr.user_id = ? AND (pr.payroll_period = ? OR pr.cycle_code = ?)`,
+    [userId, attendanceMetrics.periodCode, attendanceMetrics.periodCode]
+  );
+
+  // --- Advance & EMI Deduction (Requirement 3) ---
+  let advanceDeduction = 0;
+  let pendingAdvanceEmi = null;
+  const periodMonthStr = attendanceMetrics.startDate.substring(0, 7);
+
+  const activeEmi = await db.get(
+    `SELECT e.*, a.status as adv_status, a.remaining_balance
+     FROM salary_advance_emis e
+     JOIN salary_advances a ON e.advance_id = a.id
+     WHERE e.user_id = ? AND e.due_month = ? AND e.status IN ('pending', 'insufficient_salary') AND a.status = 'active'
+     ORDER BY e.installment_number ASC LIMIT 1`,
+    [userId, periodMonthStr]
+  );
+
+  if (activeEmi) {
+    const remainingEmiAmount = round2(activeEmi.scheduled_amount - (activeEmi.deducted_amount || 0));
+    advanceDeduction = round2(Math.min(netSalary, Math.max(0, remainingEmiAmount)));
+    netSalary = round2(Math.max(0, netSalary - advanceDeduction));
+    pendingAdvanceEmi = {
+      id: activeEmi.id,
+      advanceId: activeEmi.advance_id,
+      installmentNumber: activeEmi.installment_number,
+      scheduledAmount: activeEmi.scheduled_amount,
+      deductedAmount: advanceDeduction,
+      status: activeEmi.status,
+    };
+  } else if (cycleRecord && cycleRecord.advance_deduction) {
+    advanceDeduction = round2(cycleRecord.advance_deduction);
+    netSalary = round2(Math.max(0, netSalary - advanceDeduction));
+  }
+
   // Check disbursement and payment status if already recorded in DB
   let amountDisbursed = 0;
   let remainingPayable = netSalary;
@@ -662,11 +712,7 @@ async function calculateSalaryForEmployee(userId, periodOrMonth) {
   let paymentDate = null;
   let disbursementReference = null;
 
-  const cycleRecord = await db.get(
-    `SELECT pr.* FROM payroll_records pr
-     WHERE pr.user_id = ? AND (pr.payroll_period = ? OR pr.cycle_code = ?)`,
-    [userId, attendanceMetrics.periodCode, attendanceMetrics.periodCode]
-  );
+
 
   if (cycleRecord) {
     amountDisbursed = round2(cycleRecord.amount_disbursed || 0);
@@ -688,6 +734,8 @@ async function calculateSalaryForEmployee(userId, periodOrMonth) {
     isCycle: attendanceMetrics.isCycle,
     salaryType: empConfig.salary_type,
     baseRate,
+    advanceDeduction,
+    pendingAdvanceEmi,
     configuredMonthlyCap: empConfig.salary_type === 'fixed_monthly' ? parseFloat(empConfig.monthly_basic_salary || 0) : null,
     hasConfig,
     totalWorkingDays: attendanceMetrics.totalWorkingDays,
@@ -847,7 +895,7 @@ async function finalizePayroll(periodOrMonth, adminUserId, notes = '') {
                present_days = ?, paid_leave_days = ?, payable_days = ?, absent_days = ?, excess_absent_days = ?,
                basic_salary = ?, incentive_salary = ?, overtime_hours = ?, overtime_amount = ?,
                gross_salary = ?, employee_epf = ?, employee_esic = ?, total_employee_deductions = ?,
-               gratuity_deduction = ?, net_salary = ?, employer_epf = ?, employer_esic = ?,
+               gratuity_deduction = ?, advance_deduction = ?, net_salary = ?, employer_epf = ?, employer_esic = ?,
                ctc = ?, status = 'finalized', remaining_payable = ?, payment_status = ?,
                attendance_snapshot = ?, updated_at = ?
            WHERE id = ?`,
@@ -871,6 +919,7 @@ async function finalizePayroll(periodOrMonth, adminUserId, notes = '') {
             c.employeeEsic,
             c.totalDeductions,
             c.gratuityDeduction,
+            c.advanceDeduction || 0,
             c.netSalary,
             c.employerEpf,
             c.employerEsic,
@@ -889,9 +938,9 @@ async function finalizePayroll(periodOrMonth, adminUserId, notes = '') {
              present_days, paid_leave_days, payable_days, absent_days, excess_absent_days,
              basic_salary, incentive_salary, overtime_hours, overtime_amount, gross_salary,
              employee_epf, employee_esic, total_employee_deductions, gratuity_deduction,
-             net_salary, employer_epf, employer_esic, ctc, status, amount_disbursed,
+             advance_deduction, net_salary, employer_epf, employer_esic, ctc, status, amount_disbursed,
              remaining_payable, payment_status, attendance_snapshot, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'finalized', 0, ?, ?, ?, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'finalized', 0, ?, ?, ?, ?, ?)`,
           [
             targetPeriod,
             cycle?.id || null,
@@ -914,6 +963,7 @@ async function finalizePayroll(periodOrMonth, adminUserId, notes = '') {
             c.employeeEsic,
             c.totalDeductions,
             c.gratuityDeduction,
+            c.advanceDeduction || 0,
             c.netSalary,
             c.employerEpf,
             c.employerEsic,
@@ -1406,7 +1456,309 @@ async function generatePayrollCsv(periodOrMonth) {
   return rows.join('\n');
 }
 
+
+/**
+ * Auto-advance and reconcile salary cycles on calendar month boundaries.
+ * Closes past active cycles without assuming payment has been recorded.
+ */
+async function autoReconcileSalaryCycles() {
+  const settings = await getSalarySettings();
+  const todayStr = getCompanyDate();
+  const currentCycle = getSalaryCycleForDate(todayStr, settings.cycle_start_day || 1);
+
+  // 1. Ensure current month cycle exists
+  const existingCurrent = await db.get('SELECT * FROM salary_cycles WHERE cycle_code = ?', [currentCycle.cycleCode]);
+  if (!existingCurrent) {
+    await db.run(
+      `INSERT INTO salary_cycles (cycle_code, start_date, end_date, status)
+       VALUES (?, ?, ?, 'active')`,
+      [currentCycle.cycleCode, currentCycle.startDate, currentCycle.endDate]
+    );
+  }
+
+  // 2. Gracefully close previous active cycles
+  await db.run(
+    `UPDATE salary_cycles
+     SET status = 'closed', closed_at = CURRENT_TIMESTAMP
+     WHERE end_date < ? AND status = 'active'`,
+    [currentCycle.startDate]
+  );
+}
+
+/**
+ * Create a new salary advance with automatic single-month or EMI installment schedule.
+ */
+async function createSalaryAdvance({
+  userId,
+  amount,
+  purpose,
+  disbursementDate,
+  recoveryType = 'emi',
+  totalInstallments = 1,
+  startMonth,
+  notes,
+  adminId,
+}) {
+  const user = await db.get('SELECT id, full_name, email FROM users WHERE id = ?', [userId]);
+  if (!user) throw new Error('Employee not found');
+
+  const advAmount = round2(parseFloat(amount));
+  if (isNaN(advAmount) || advAmount <= 0) {
+    throw new Error('Advance amount must be greater than 0');
+  }
+
+  const numInstallments = recoveryType === 'single' ? 1 : Math.max(1, parseInt(totalInstallments, 10) || 1);
+  const monthlyInstallment = round2(advAmount / numInstallments);
+  const disbDate = disbursementDate || getCompanyDate();
+  const curDueMonth = startMonth || disbDate.substring(0, 7);
+  const nowIso = new Date().toISOString();
+  let advanceId;
+
+  await db.withTransaction(async (tx) => {
+    const advResult = await tx.run(
+      `INSERT INTO salary_advances (
+        user_id, amount, purpose, disbursement_date, recovery_type,
+        total_installments, monthly_installment_amount, total_recovered,
+        remaining_balance, status, approved_by, notes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 'active', ?, ?, ?, ?)`,
+      [
+        userId,
+        advAmount,
+        purpose || null,
+        disbDate,
+        recoveryType,
+        numInstallments,
+        monthlyInstallment,
+        advAmount,
+        adminId || null,
+        notes || null,
+        nowIso,
+        nowIso,
+      ]
+    );
+    advanceId = advResult.lastID;
+
+    // Generate EMI installments
+    let remainingToSchedule = advAmount;
+    let [dueY, dueM] = curDueMonth.split('-').map(Number);
+
+    for (let i = 1; i <= numInstallments; i++) {
+      const monthStr = `${dueY}-${String(dueM).padStart(2, '0')}`;
+      const isLast = (i === numInstallments);
+      const scheduled = isLast ? round2(remainingToSchedule) : monthlyInstallment;
+      remainingToSchedule = round2(remainingToSchedule - scheduled);
+
+      await tx.run(
+        `INSERT INTO salary_advance_emis (
+          advance_id, user_id, installment_number, due_month,
+          scheduled_amount, deducted_amount, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, 0, 'pending', ?)`,
+        [advanceId, userId, i, monthStr, scheduled, nowIso]
+      );
+
+      dueM++;
+      if (dueM > 12) {
+        dueM = 1;
+        dueY++;
+      }
+    }
+  });
+
+  await logActivity({
+    userId: adminId,
+    action: 'SALARY_ADVANCE_CREATED',
+    module: 'salary',
+    entityType: 'salary_advance',
+    entityId: advanceId,
+    targetUserId: userId,
+    targetUserName: user.full_name,
+    details: `Created ₹${advAmount} salary advance for ${user.full_name} (${numInstallments} installment(s), ₹${monthlyInstallment}/mo)`,
+  });
+
+  return getSalaryAdvanceDetails(advanceId);
+}
+
+/**
+ * Get salary advance details with full EMI schedule
+ */
+async function getSalaryAdvanceDetails(advanceId) {
+  const advance = await db.get(
+    `SELECT a.*, u.full_name, u.email, u.department
+     FROM salary_advances a
+     JOIN users u ON a.user_id = u.id
+     WHERE a.id = ?`,
+    [advanceId]
+  );
+  if (!advance) throw new Error('Salary advance not found');
+
+  const emis = await db.query(
+    'SELECT * FROM salary_advance_emis WHERE advance_id = ? ORDER BY installment_number ASC',
+    [advanceId]
+  );
+
+  return {
+    advance,
+    emis,
+  };
+}
+
+/**
+ * List all advances with optional filters
+ */
+async function listSalaryAdvances({ userId, status, limit = 50 } = {}) {
+  let sql = `
+    SELECT a.*, u.full_name, u.email, u.department
+    FROM salary_advances a
+    JOIN users u ON a.user_id = u.id
+    WHERE 1=1
+  `;
+  const params = [];
+  if (userId) {
+    sql += ' AND a.user_id = ?';
+    params.push(userId);
+  }
+  if (status) {
+    sql += ' AND a.status = ?';
+    params.push(status);
+  }
+  sql += ' ORDER BY a.created_at DESC LIMIT ?';
+  params.push(limit);
+
+  return db.query(sql, params);
+}
+
+/**
+ * Pause a salary advance
+ */
+async function pauseSalaryAdvance(advanceId, adminId) {
+  const adv = await db.get('SELECT * FROM salary_advances WHERE id = ?', [advanceId]);
+  if (!adv) throw new Error('Salary advance not found');
+  if (adv.status !== 'active') throw new Error(`Cannot pause advance with status ${adv.status}`);
+
+  const nowIso = new Date().toISOString();
+  await db.withTransaction(async (tx) => {
+    await tx.run("UPDATE salary_advances SET status = 'paused', updated_at = ? WHERE id = ?", [nowIso, advanceId]);
+    await tx.run("UPDATE salary_advance_emis SET status = 'paused' WHERE advance_id = ? AND status = 'pending'", [advanceId]);
+  });
+
+  await logActivity({
+    userId: adminId,
+    action: 'SALARY_ADVANCE_PAUSED',
+    module: 'salary',
+    entityType: 'salary_advance',
+    entityId: advanceId,
+    details: `Paused salary advance ID #${advanceId}`,
+  });
+  return getSalaryAdvanceDetails(advanceId);
+}
+
+/**
+ * Resume a salary advance
+ */
+async function resumeSalaryAdvance(advanceId, adminId) {
+  const adv = await db.get('SELECT * FROM salary_advances WHERE id = ?', [advanceId]);
+  if (!adv) throw new Error('Salary advance not found');
+  if (adv.status !== 'paused') throw new Error(`Cannot resume advance with status ${adv.status}`);
+
+  const nowIso = new Date().toISOString();
+  await db.withTransaction(async (tx) => {
+    await tx.run("UPDATE salary_advances SET status = 'active', updated_at = ? WHERE id = ?", [nowIso, advanceId]);
+    await tx.run("UPDATE salary_advance_emis SET status = 'pending' WHERE advance_id = ? AND status = 'paused'", [advanceId]);
+  });
+
+  await logActivity({
+    userId: adminId,
+    action: 'SALARY_ADVANCE_RESUMED',
+    module: 'salary',
+    entityType: 'salary_advance',
+    entityId: advanceId,
+    details: `Resumed salary advance ID #${advanceId}`,
+  });
+  return getSalaryAdvanceDetails(advanceId);
+}
+
+/**
+ * Early settlement of advance outside monthly payroll
+ */
+async function settleSalaryAdvanceEarly({ advanceId, settlementAmount, paymentMethod, paymentReference, notes, adminId }) {
+  const adv = await db.get('SELECT * FROM salary_advances WHERE id = ?', [advanceId]);
+  if (!adv) throw new Error('Salary advance not found');
+  if (adv.status === 'completed' || adv.status === 'cancelled') {
+    throw new Error(`Cannot settle advance with status ${adv.status}`);
+  }
+
+  const settleAmt = settlementAmount !== undefined ? round2(parseFloat(settlementAmount)) : adv.remaining_balance;
+  const nowIso = new Date().toISOString();
+
+  await db.withTransaction(async (tx) => {
+    await tx.run(
+      `UPDATE salary_advances
+       SET total_recovered = amount, remaining_balance = 0, status = 'completed',
+           notes = COALESCE(notes || ' | ', '') || ?, updated_at = ?
+       WHERE id = ?`,
+      [`Early Settlement of ₹${settleAmt} via ${paymentMethod || 'cash'} (Ref: ${paymentReference || 'N/A'})${notes ? ': ' + notes : ''}`, nowIso, advanceId]
+    );
+
+    await tx.run(
+      `UPDATE salary_advance_emis
+       SET status = 'settled_early', notes = ?
+       WHERE advance_id = ? AND status IN ('pending', 'paused', 'insufficient_salary')`,
+      [`Settled early on ${nowIso.substring(0, 10)}`, advanceId]
+    );
+  });
+
+  await logActivity({
+    userId: adminId,
+    action: 'SALARY_ADVANCE_SETTLED_EARLY',
+    module: 'salary',
+    entityType: 'salary_advance',
+    entityId: advanceId,
+    details: `Early settlement recorded for advance ID #${advanceId} (₹${settleAmt})`,
+  });
+  return getSalaryAdvanceDetails(advanceId);
+}
+
+/**
+ * Get employee advances overview
+ */
+async function getEmployeeAdvances(userId) {
+  const advances = await db.query(
+    'SELECT * FROM salary_advances WHERE user_id = ? ORDER BY created_at DESC',
+    [userId]
+  );
+  const activeAdvance = advances.find((a) => a.status === 'active');
+  let nextEmi = null;
+  if (activeAdvance) {
+    nextEmi = await db.get(
+      `SELECT * FROM salary_advance_emis
+       WHERE advance_id = ? AND status IN ('pending', 'insufficient_salary')
+       ORDER BY installment_number ASC LIMIT 1`,
+      [activeAdvance.id]
+    );
+  }
+
+  const allEmis = await db.query(
+    'SELECT * FROM salary_advance_emis WHERE user_id = ? ORDER BY installment_number ASC',
+    [userId]
+  );
+
+  return {
+    advances,
+    activeAdvance: activeAdvance || null,
+    nextEmi: nextEmi || null,
+    emis: allEmis,
+  };
+}
+
 module.exports = {
+  autoReconcileSalaryCycles,
+  createSalaryAdvance,
+  getSalaryAdvanceDetails,
+  listSalaryAdvances,
+  pauseSalaryAdvance,
+  resumeSalaryAdvance,
+  settleSalaryAdvanceEarly,
+  getEmployeeAdvances,
   round2,
   getDatesInMonth,
   getDatesInDateRange,
