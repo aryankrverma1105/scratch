@@ -946,26 +946,48 @@ function initDatabase() {
         try { await run(`ALTER TABLE backup_records ADD COLUMN verification_message TEXT`); } catch (_) {}
         try { await run(`ALTER TABLE backup_records ADD COLUMN snapshot_path TEXT`); } catch (_) {}
 
-        // Ensure Personal Drive destination exists (gameraryan2005@gmail.com)
+        // Ensure Personal Drive destination exists and is configured (gameraryan2005@gmail.com)
         try {
+          const credSource = await get(
+            `SELECT client_id, client_secret FROM backup_destinations 
+             WHERE client_id IS NOT NULL AND client_secret IS NOT NULL 
+               AND client_id != '' AND client_secret != '' 
+             ORDER BY id ASC LIMIT 1`
+          );
+
+          const defaultClientId = config.BACKUP_PERSONAL_CLIENT_ID || (credSource ? credSource.client_id : null);
+          const defaultClientSecret = config.BACKUP_PERSONAL_CLIENT_SECRET || (credSource ? credSource.client_secret : null);
+          const resolvedRefreshToken = config.BACKUP_PERSONAL_REFRESH_TOKEN || null;
+          const nowIso = new Date().toISOString();
+
           const personalDest = await get(
-            `SELECT id FROM backup_destinations WHERE LOWER(account_email) = ? OR LOWER(name) LIKE '%aryan%'`,
+            `SELECT id, client_id, client_secret, refresh_token FROM backup_destinations 
+             WHERE LOWER(account_email) = ? OR LOWER(name) LIKE '%aryan%'`,
             ['gameraryan2005@gmail.com']
           );
           if (!personalDest) {
-            const nowIso = new Date().toISOString();
             await run(
               `INSERT INTO backup_destinations (name, drive_type, folder_id, client_id, client_secret, refresh_token, account_email, is_enabled, created_at, updated_at)
                VALUES (?, 'google_drive', ?, ?, ?, ?, 'gameraryan2005@gmail.com', 1, ?, ?)`,
               [
                 'Personal Drive (gameraryan2005@gmail.com)',
                 config.BACKUP_PERSONAL_FOLDER_ID || null,
-                config.BACKUP_PERSONAL_CLIENT_ID || null,
-                config.BACKUP_PERSONAL_CLIENT_SECRET || null,
-                config.BACKUP_PERSONAL_REFRESH_TOKEN || null,
+                defaultClientId,
+                defaultClientSecret,
+                resolvedRefreshToken,
                 nowIso,
                 nowIso,
               ]
+            );
+          } else {
+            await run(
+              `UPDATE backup_destinations
+               SET client_id = COALESCE(NULLIF(client_id, ''), ?),
+                   client_secret = COALESCE(NULLIF(client_secret, ''), ?),
+                   refresh_token = COALESCE(NULLIF(refresh_token, ''), ?),
+                   updated_at = ?
+               WHERE id = ?`,
+              [defaultClientId, defaultClientSecret, resolvedRefreshToken, nowIso, personalDest.id]
             );
           }
         } catch (_) {}

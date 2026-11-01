@@ -581,12 +581,44 @@ async function testDestinationConnection(destinationId) {
   const dest = await db.get('SELECT * FROM backup_destinations WHERE id = ?', [destinationId]);
   if (!dest) throw new Error('Backup destination not found');
 
-  if (!dest.client_id || !dest.client_secret || !dest.refresh_token) {
+  let clientId = dest.client_id;
+  let clientSecret = dest.client_secret;
+  let refreshToken = dest.refresh_token;
+
+  if (!clientId || !clientSecret) {
+    const fallback = await db.get(
+      `SELECT client_id, client_secret FROM backup_destinations 
+       WHERE client_id IS NOT NULL AND client_secret IS NOT NULL 
+         AND client_id != '' AND client_secret != '' AND id != ? 
+       ORDER BY id ASC LIMIT 1`,
+      [destinationId]
+    );
+    if (fallback) {
+      clientId = clientId || fallback.client_id;
+      clientSecret = clientSecret || fallback.client_secret;
+      await db.run(
+        `UPDATE backup_destinations SET client_id = ?, client_secret = ? WHERE id = ?`,
+        [clientId, clientSecret, destinationId]
+      );
+    }
+  }
+
+  if (!refreshToken && (dest.account_email?.toLowerCase() === 'gameraryan2005@gmail.com' || dest.name?.toLowerCase().includes('aryan'))) {
+    if (process.env.BACKUP_PERSONAL_REFRESH_TOKEN) {
+      refreshToken = process.env.BACKUP_PERSONAL_REFRESH_TOKEN;
+      await db.run(
+        `UPDATE backup_destinations SET refresh_token = ? WHERE id = ?`,
+        [refreshToken, destinationId]
+      );
+    }
+  }
+
+  if (!clientId || !clientSecret || !refreshToken) {
     throw new Error('Destination is missing Client ID, Client Secret, or Refresh Token');
   }
 
   try {
-    const accessToken = await refreshGoogleAccessToken(dest.client_id, dest.client_secret, dest.refresh_token);
+    const accessToken = await refreshGoogleAccessToken(clientId, clientSecret, refreshToken);
     const nowIso = new Date().toISOString();
 
     await db.run(
@@ -660,12 +692,34 @@ async function performBackup({ backupType = 'daily_cron', specificDestinationId 
   for (const dest of destinations) {
     const nowIso = new Date().toISOString();
     try {
-      if (!dest.client_id || !dest.client_secret || !dest.refresh_token) {
+      let clientId = dest.client_id;
+      let clientSecret = dest.client_secret;
+      let refreshToken = dest.refresh_token;
+
+      if (!clientId || !clientSecret) {
+        const fallback = await db.get(
+          `SELECT client_id, client_secret FROM backup_destinations 
+           WHERE client_id IS NOT NULL AND client_secret IS NOT NULL 
+             AND client_id != '' AND client_secret != '' AND id != ? 
+           ORDER BY id ASC LIMIT 1`,
+          [dest.id]
+        );
+        if (fallback) {
+          clientId = clientId || fallback.client_id;
+          clientSecret = clientSecret || fallback.client_secret;
+        }
+      }
+
+      if (!refreshToken && (dest.account_email?.toLowerCase() === 'gameraryan2005@gmail.com' || dest.name?.toLowerCase().includes('aryan'))) {
+        refreshToken = process.env.BACKUP_PERSONAL_REFRESH_TOKEN || null;
+      }
+
+      if (!clientId || !clientSecret || !refreshToken) {
         throw new Error('Destination configuration incomplete: Missing Client ID, Client Secret, or Refresh Token');
       }
 
       // Step A: Refresh token
-      const accessToken = await refreshGoogleAccessToken(dest.client_id, dest.client_secret, dest.refresh_token);
+      const accessToken = await refreshGoogleAccessToken(clientId, clientSecret, refreshToken);
 
       // Step B: Upload full uncompressed hierarchy to Google Drive
       const uploadResult = await uploadBackupBundleToGoogleDrive(accessToken, bundle, dest.folder_id);
@@ -908,7 +962,33 @@ async function retryBackupRecord(recordId) {
     totalBytes: record.file_size,
   };
 
-  const accessToken = await refreshGoogleAccessToken(dest.client_id, dest.client_secret, dest.refresh_token);
+  let clientId = dest.client_id;
+  let clientSecret = dest.client_secret;
+  let refreshToken = dest.refresh_token;
+
+  if (!clientId || !clientSecret) {
+    const fallback = await db.get(
+      `SELECT client_id, client_secret FROM backup_destinations 
+       WHERE client_id IS NOT NULL AND client_secret IS NOT NULL 
+         AND client_id != '' AND client_secret != '' AND id != ? 
+       ORDER BY id ASC LIMIT 1`,
+      [dest.id]
+    );
+    if (fallback) {
+      clientId = clientId || fallback.client_id;
+      clientSecret = clientSecret || fallback.client_secret;
+    }
+  }
+
+  if (!refreshToken && (dest.account_email?.toLowerCase() === 'gameraryan2005@gmail.com' || dest.name?.toLowerCase().includes('aryan'))) {
+    refreshToken = process.env.BACKUP_PERSONAL_REFRESH_TOKEN || null;
+  }
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error('Destination configuration incomplete: Missing Client ID, Client Secret, or Refresh Token');
+  }
+
+  const accessToken = await refreshGoogleAccessToken(clientId, clientSecret, refreshToken);
   const uploadResult = await uploadBackupBundleToGoogleDrive(accessToken, bundle, dest.folder_id);
 
   const nowIso = new Date().toISOString();

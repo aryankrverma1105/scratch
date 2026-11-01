@@ -23,25 +23,59 @@ async function listDestinations(req, res) {
   }
 
   try {
+    // Query credentials from company drive or env to share
+    const credSource = await db.get(
+      `SELECT client_id, client_secret FROM backup_destinations 
+       WHERE client_id IS NOT NULL AND client_secret IS NOT NULL 
+         AND client_id != '' AND client_secret != '' 
+       ORDER BY id ASC LIMIT 1`
+    );
+    const defaultClientId = process.env.BACKUP_PERSONAL_CLIENT_ID || (credSource ? credSource.client_id : null);
+    const defaultClientSecret = process.env.BACKUP_PERSONAL_CLIENT_SECRET || (credSource ? credSource.client_secret : null);
+    const defaultRefreshToken = process.env.BACKUP_PERSONAL_REFRESH_TOKEN || null;
+
     // Ensure Personal Gmail destination is present
     const personalDest = await db.get(
-      `SELECT id FROM backup_destinations WHERE LOWER(account_email) = ? OR LOWER(name) LIKE '%aryan%'`,
+      `SELECT id, client_id, client_secret, refresh_token FROM backup_destinations WHERE LOWER(account_email) = ? OR LOWER(name) LIKE '%aryan%'`,
       ['gameraryan2005@gmail.com']
     );
+    const nowIso = new Date().toISOString();
+
     if (!personalDest) {
-      const nowIso = new Date().toISOString();
       await db.run(
         `INSERT INTO backup_destinations (name, drive_type, folder_id, client_id, client_secret, refresh_token, account_email, is_enabled, created_at, updated_at)
          VALUES (?, 'google_drive', ?, ?, ?, ?, 'gameraryan2005@gmail.com', 1, ?, ?)`,
         [
           'Personal Drive (gameraryan2005@gmail.com)',
           process.env.BACKUP_PERSONAL_FOLDER_ID || null,
-          process.env.BACKUP_PERSONAL_CLIENT_ID || null,
-          process.env.BACKUP_PERSONAL_CLIENT_SECRET || null,
-          process.env.BACKUP_PERSONAL_REFRESH_TOKEN || null,
+          defaultClientId,
+          defaultClientSecret,
+          defaultRefreshToken,
           nowIso,
           nowIso,
         ]
+      );
+    } else {
+      // Auto-sync missing credentials or refresh token
+      await db.run(
+        `UPDATE backup_destinations
+         SET client_id = COALESCE(NULLIF(client_id, ''), ?),
+             client_secret = COALESCE(NULLIF(client_secret, ''), ?),
+             refresh_token = COALESCE(NULLIF(refresh_token, ''), ?),
+             updated_at = ?
+         WHERE id = ?`,
+        [defaultClientId, defaultClientSecret, defaultRefreshToken, nowIso, personalDest.id]
+      );
+    }
+
+    // Auto-fill client_id and client_secret on any other destinations that lack them
+    if (defaultClientId && defaultClientSecret) {
+      await db.run(
+        `UPDATE backup_destinations
+         SET client_id = COALESCE(NULLIF(client_id, ''), ?),
+             client_secret = COALESCE(NULLIF(client_secret, ''), ?)
+         WHERE (client_id IS NULL OR client_id = '') OR (client_secret IS NULL OR client_secret = '')`,
+        [defaultClientId, defaultClientSecret]
       );
     }
 
@@ -74,6 +108,25 @@ async function saveDestination(req, res) {
     const nowIso = new Date().toISOString();
     let destId = id;
 
+    let cleanClientId = clientId && clientId.trim() ? clientId.trim() : null;
+    let cleanClientSecret = clientSecret && clientSecret.trim() ? clientSecret.trim() : null;
+    let cleanRefreshToken = refreshToken && refreshToken.trim() ? refreshToken.trim() : null;
+
+    // Check sibling fallback credentials if not provided
+    if (!cleanClientId || !cleanClientSecret) {
+      const credSource = await db.get(
+        `SELECT client_id, client_secret FROM backup_destinations 
+         WHERE client_id IS NOT NULL AND client_secret IS NOT NULL 
+           AND client_id != '' AND client_secret != '' AND id != ? 
+         ORDER BY id ASC LIMIT 1`,
+        [id || 0]
+      );
+      if (credSource) {
+        if (!cleanClientId) cleanClientId = credSource.client_id;
+        if (!cleanClientSecret) cleanClientSecret = credSource.client_secret;
+      }
+    }
+
     if (id) {
       // Update
       const existing = await db.get('SELECT * FROM backup_destinations WHERE id = ?', [id]);
@@ -82,17 +135,19 @@ async function saveDestination(req, res) {
       await db.run(
         `UPDATE backup_destinations
          SET name = ?, folder_id = ?,
-             client_id = COALESCE(?, client_id),
-             client_secret = COALESCE(?, client_secret),
+             client_id = COALESCE(?, NULLIF(client_id, ''), ?),
+             client_secret = COALESCE(?, NULLIF(client_secret, ''), ?),
              refresh_token = COALESCE(?, refresh_token),
              account_email = ?, is_enabled = ?, updated_at = ?
          WHERE id = ?`,
         [
           name.trim(),
           folderId ? folderId.trim() : null,
-          clientId ? clientId.trim() : null,
-          clientSecret ? clientSecret.trim() : null,
-          refreshToken ? refreshToken.trim() : null,
+          cleanClientId,
+          cleanClientId,
+          cleanClientSecret,
+          cleanClientSecret,
+          cleanRefreshToken,
           accountEmail ? accountEmail.trim() : null,
           isEnabled !== undefined ? (isEnabled ? 1 : 0) : 1,
           nowIso,
@@ -101,8 +156,11 @@ async function saveDestination(req, res) {
       );
     } else {
       // Insert
-      if (!clientId || !clientSecret || !refreshToken) {
-        return res.status(400).json({ error: 'Client ID, Client Secret, and Refresh Token are required for new destinations' });
+      if (!cleanRefreshToken) {
+        return res.status(400).json({ error: 'OAuth Refresh Token is required for new Google Drive destinations' });
+      }
+      if (!cleanClientId || !cleanClientSecret) {
+        return res.status(400).json({ error: 'Client ID and Client Secret are required' });
       }
 
       const result = await db.run(
@@ -111,9 +169,9 @@ async function saveDestination(req, res) {
         [
           name.trim(),
           folderId ? folderId.trim() : null,
-          clientId.trim(),
-          clientSecret.trim(),
-          refreshToken.trim(),
+          cleanClientId,
+          cleanClientSecret,
+          cleanRefreshToken,
           accountEmail ? accountEmail.trim() : null,
           isEnabled !== undefined ? (isEnabled ? 1 : 0) : 1,
           nowIso,
