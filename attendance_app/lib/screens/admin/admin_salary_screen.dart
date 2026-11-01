@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
 import '../../models/salary_models.dart';
+import '../../models/user_model.dart';
+import '../../widgets/searchable_employee_picker.dart';
 
 class AdminSalaryScreen extends StatefulWidget {
   const AdminSalaryScreen({super.key});
@@ -32,6 +34,8 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
   List<SalaryAdvanceModel> _advances = [];
 
   final TextEditingController _commonWageController = TextEditingController();
+  final TextEditingController _salarySearchController = TextEditingController();
+  String _salarySearchQuery = '';
 
   @override
   void initState() {
@@ -44,6 +48,7 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
   void dispose() {
     _tabController.dispose();
     _commonWageController.dispose();
+    _salarySearchController.dispose();
     super.dispose();
   }
 
@@ -865,6 +870,32 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
             ],
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+          child: TextField(
+            controller: _salarySearchController,
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+            onChanged: (val) => setState(() => _salarySearchQuery = val),
+            decoration: InputDecoration(
+              hintText: 'Search employee name across all tabs...',
+              hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+              prefixIcon: const Icon(Icons.search, color: AppColors.info, size: 18),
+              suffixIcon: _salarySearchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, color: Colors.white70, size: 16),
+                      onPressed: () {
+                        _salarySearchController.clear();
+                        setState(() => _salarySearchQuery = '');
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: AppColors.cardDark,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            ),
+          ),
+        ),
         Expanded(
           child: TabBarView(
             controller: _tabController,
@@ -1144,7 +1175,10 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
         const Text('Employee Payroll Records', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 12),
 
-        ..._calculations.map((c) {
+        ...(_salarySearchQuery.trim().isEmpty
+                ? _calculations
+                : _calculations.where((c) => c.fullName.toLowerCase().contains(_salarySearchQuery.trim().toLowerCase())))
+            .map((c) {
           final isDaily = c.salaryType == 'daily_wage';
           final paymentStatus = c.paymentStatus.isNotEmpty ? c.paymentStatus : (c.isFinalized ? 'finalized' : 'draft');
           final isPaid = paymentStatus == 'paid';
@@ -1464,7 +1498,10 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
         const Text('Employee Salary Configurations', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 12),
 
-        ..._configs.map((c) {
+        ...(_salarySearchQuery.trim().isEmpty
+                ? _configs
+                : _configs.where((c) => c.fullName.toLowerCase().contains(_salarySearchQuery.trim().toLowerCase())))
+            .map((c) {
           final isDaily = c.salaryType == 'daily_wage';
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -1652,6 +1689,10 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
   }
 
   Widget _buildIncentivesTab() {
+    final filtered = _salarySearchQuery.trim().isEmpty
+        ? _incentives
+        : _incentives.where((i) => (i.fullName ?? '').toLowerCase().contains(_salarySearchQuery.trim().toLowerCase())).toList();
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
@@ -1660,13 +1701,13 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
         label: const Text('Add Daily Incentive', style: TextStyle(color: Colors.white)),
         onPressed: _addIncentiveDialog,
       ),
-      body: _incentives.isEmpty
-          ? const Center(child: Text('No daily incentives recorded for this month', style: TextStyle(color: AppColors.textMuted)))
+      body: filtered.isEmpty
+          ? const Center(child: Text('No daily incentives found', style: TextStyle(color: AppColors.textMuted)))
           : ListView.builder(
               padding: const EdgeInsets.all(20),
-              itemCount: _incentives.length,
+              itemCount: filtered.length,
               itemBuilder: (context, index) {
-                final inc = _incentives[index];
+                final inc = filtered[index];
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
@@ -1728,21 +1769,50 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
               children: [
                 const Text('Select Employee', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
                 const SizedBox(height: 6),
-                DropdownButtonFormField<int>(
-                  value: selectedUserId,
-                  dropdownColor: AppColors.inputDark,
-                  style: const TextStyle(color: Colors.white),
-                  items: _configs
-                      .map((c) => DropdownMenuItem<int>(
-                            value: c.userId,
-                            child: Text(c.fullName, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                          ))
-                      .toList(),
-                  onChanged: (val) => setModalState(() => selectedUserId = val),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: AppColors.inputDark,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                InkWell(
+                  onTap: () async {
+                    final employees = _configs
+                        .map((c) => UserModel(id: c.userId, fullName: c.fullName, email: c.email, role: c.role ?? 'employee', department: c.department))
+                        .toList();
+                    final selectedModel = employees.cast<UserModel?>().firstWhere(
+                      (u) => u?.id == selectedUserId,
+                      orElse: () => null,
+                    );
+                    final picked = await showSearchableEmployeePicker(
+                      context: context,
+                      employees: employees,
+                      selected: selectedModel,
+                      title: 'Select Employee for Incentive',
+                    );
+                    if (picked != null) {
+                      setModalState(() => selectedUserId = picked.id);
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.inputDark,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.person_search, color: AppColors.info, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _configs.firstWhere(
+                              (c) => c.userId == selectedUserId,
+                              orElse: () => EmployeeSalaryConfigModel(userId: 0, fullName: 'Select Employee', email: '', salaryType: 'daily_wage', monthlyBasicSalary: 0, dailyIncentiveRate: 0),
+                            ).fullName,
+                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Icon(Icons.arrow_drop_down, color: Colors.white60, size: 18),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1821,6 +1891,10 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
   }
 
   Widget _buildOvertimeTab() {
+    final filtered = _salarySearchQuery.trim().isEmpty
+        ? _overtimes
+        : _overtimes.where((ot) => (ot.fullName ?? '').toLowerCase().contains(_salarySearchQuery.trim().toLowerCase())).toList();
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
@@ -1829,13 +1903,13 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
         label: const Text('Record Overtime', style: TextStyle(color: Colors.white)),
         onPressed: _addOvertimeDialog,
       ),
-      body: _overtimes.isEmpty
+      body: filtered.isEmpty
           ? const Center(child: Text('No overtime recorded for this month', style: TextStyle(color: AppColors.textMuted)))
           : ListView.builder(
               padding: const EdgeInsets.all(20),
-              itemCount: _overtimes.length,
+              itemCount: filtered.length,
               itemBuilder: (context, index) {
-                final ot = _overtimes[index];
+                final ot = filtered[index];
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
@@ -1898,21 +1972,50 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
               children: [
                 const Text('Select Employee', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
                 const SizedBox(height: 6),
-                DropdownButtonFormField<int>(
-                  value: selectedUserId,
-                  dropdownColor: AppColors.inputDark,
-                  style: const TextStyle(color: Colors.white),
-                  items: _configs
-                      .map((c) => DropdownMenuItem<int>(
-                            value: c.userId,
-                            child: Text(c.fullName, style: const TextStyle(color: Colors.white, fontSize: 13)),
-                          ))
-                      .toList(),
-                  onChanged: (val) => setModalState(() => selectedUserId = val),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: AppColors.inputDark,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                InkWell(
+                  onTap: () async {
+                    final employees = _configs
+                        .map((c) => UserModel(id: c.userId, fullName: c.fullName, email: c.email, role: c.role ?? 'employee', department: c.department))
+                        .toList();
+                    final selectedModel = employees.cast<UserModel?>().firstWhere(
+                      (u) => u?.id == selectedUserId,
+                      orElse: () => null,
+                    );
+                    final picked = await showSearchableEmployeePicker(
+                      context: context,
+                      employees: employees,
+                      selected: selectedModel,
+                      title: 'Select Employee for Incentive',
+                    );
+                    if (picked != null) {
+                      setModalState(() => selectedUserId = picked.id);
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.inputDark,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.person_search, color: AppColors.info, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _configs.firstWhere(
+                              (c) => c.userId == selectedUserId,
+                              orElse: () => EmployeeSalaryConfigModel(userId: 0, fullName: 'Select Employee', email: '', salaryType: 'daily_wage', monthlyBasicSalary: 0, dailyIncentiveRate: 0),
+                            ).fullName,
+                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Icon(Icons.arrow_drop_down, color: Colors.white60, size: 18),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -2077,7 +2180,10 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
           const SizedBox(height: 20),
           const Text('Employee Advance Records', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 12),
-          if (_advances.isEmpty)
+          if ((_salarySearchQuery.trim().isEmpty
+                  ? _advances
+                  : _advances.where((a) => (a.fullName ?? '').toLowerCase().contains(_salarySearchQuery.trim().toLowerCase())))
+              .isEmpty)
             Container(
               padding: const EdgeInsets.all(32),
               alignment: Alignment.center,
@@ -2085,12 +2191,15 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
                 children: [
                   Icon(Icons.account_balance_wallet_outlined, color: Colors.white24, size: 48),
                   SizedBox(height: 12),
-                  Text('No salary advances recorded', style: TextStyle(color: AppColors.textMuted, fontSize: 15)),
+                  Text('No salary advances found', style: TextStyle(color: AppColors.textMuted, fontSize: 15)),
                 ],
               ),
             )
           else
-            ..._advances.map((adv) => _buildAdvanceCard(adv)),
+            ...(_salarySearchQuery.trim().isEmpty
+                    ? _advances
+                    : _advances.where((a) => (a.fullName ?? '').toLowerCase().contains(_salarySearchQuery.trim().toLowerCase())))
+                .map((adv) => _buildAdvanceCard(adv)),
         ],
       ),
     );
@@ -2253,18 +2362,51 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
                 children: [
                   const Text('Select Employee *', style: TextStyle(color: Colors.white70, fontSize: 12)),
                   const SizedBox(height: 6),
-                  DropdownButtonFormField<int>(
-                    value: selectedUserId,
-                    dropdownColor: AppColors.cardDark,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                    decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-                    items: _configs.map((c) {
-                      return DropdownMenuItem<int>(
-                        value: c.userId,
-                        child: Text(c.fullName + ' (' + (c.salaryType == 'fixed_monthly' ? 'Monthly' : 'Daily') + ')'),
+                  InkWell(
+                    onTap: () async {
+                      final employees = _configs
+                          .map((c) => UserModel(id: c.userId, fullName: c.fullName, email: c.email, role: c.role ?? 'employee', department: c.department))
+                          .toList();
+                      final selectedModel = employees.cast<UserModel?>().firstWhere(
+                        (u) => u?.id == selectedUserId,
+                        orElse: () => null,
                       );
-                    }).toList(),
-                    onChanged: (val) => setDialogState(() => selectedUserId = val),
+                      final picked = await showSearchableEmployeePicker(
+                        context: context,
+                        employees: employees,
+                        selected: selectedModel,
+                        title: 'Select Employee for Advance',
+                      );
+                      if (picked != null) {
+                        setDialogState(() => selectedUserId = picked.id);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardDark,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_search, color: AppColors.info, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _configs.firstWhere(
+                                (c) => c.userId == selectedUserId,
+                                orElse: () => EmployeeSalaryConfigModel(userId: 0, fullName: 'Select Employee', email: '', salaryType: 'daily_wage', monthlyBasicSalary: 0, dailyIncentiveRate: 0),
+                              ).fullName,
+                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const Icon(Icons.arrow_drop_down, color: Colors.white60, size: 18),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(

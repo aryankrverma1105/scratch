@@ -584,6 +584,42 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
               ),
             ),
           ],
+
+          if (_activeAdvance != null) ...[
+            const SizedBox(height: 22),
+            const Text('Active Salary Advance & EMI', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AppColors.cardDark,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.orangeAccent.withOpacity(0.4)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Original Advance: ₹${NumberFormat('#,##,##0').format(_activeAdvance!.amount)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(color: Colors.orange.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                        child: Text(_activeAdvance!.status.toUpperCase(), style: const TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildRow('Outstanding Balance', '₹${NumberFormat('#,##,##0').format(_activeAdvance!.remainingBalance)}', color: Colors.orangeAccent, isBold: true),
+                  if (_nextEmi != null) ...[
+                    const Divider(color: Colors.white12),
+                    _buildRow('Next Due Month (${_nextEmi!.dueMonth})', '₹${NumberFormat('#,##,##0').format(_nextEmi!.scheduledAmount)}', color: Colors.white70),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

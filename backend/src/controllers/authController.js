@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
 const config = require('../config');
+const { getCompanyDate } = require('../utils/timeUtils');
 
 async function login(req, res) {
   try {
@@ -41,7 +42,7 @@ async function login(req, res) {
     );
 
     // Also fetch today's active attendance status
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getCompanyDate();
     const activeAttendance = await db.get(
       "SELECT * FROM attendance WHERE user_id = ? AND status = 'checked_in' ORDER BY id DESC LIMIT 1",
       [user.id]

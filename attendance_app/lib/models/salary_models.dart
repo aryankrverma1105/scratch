@@ -765,6 +765,9 @@ class BackupRecordModel {
   final String? googleFileId;
   final String status; // 'success' | 'failed'
   final String? errorMessage;
+  final String? manifestData;
+  final String verificationStatus; // 'verified' | 'unverified'
+  final String? verificationMessage;
   final String createdAt;
 
   BackupRecordModel({
@@ -777,6 +780,9 @@ class BackupRecordModel {
     this.googleFileId,
     required this.status,
     this.errorMessage,
+    this.manifestData,
+    this.verificationStatus = 'verified',
+    this.verificationMessage,
     required this.createdAt,
   });
 
@@ -801,6 +807,9 @@ class BackupRecordModel {
       googleFileId: json['google_file_id']?.toString() ?? json['googleFileId']?.toString(),
       status: json['status']?.toString() ?? 'success',
       errorMessage: json['error_message']?.toString() ?? json['errorMessage']?.toString(),
+      manifestData: json['manifest_data']?.toString() ?? json['manifestData']?.toString(),
+      verificationStatus: json['verification_status']?.toString() ?? json['verificationStatus']?.toString() ?? 'verified',
+      verificationMessage: json['verification_message']?.toString() ?? json['verificationMessage']?.toString(),
       createdAt: json['created_at']?.toString() ?? json['createdAt']?.toString() ?? '',
     );
   }

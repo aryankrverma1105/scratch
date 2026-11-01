@@ -27,6 +27,9 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
   bool _isLoading = true;
   Timer? _refreshTimer;
   LiveEmployeeLocation? _selectedEmployee;
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -85,6 +88,7 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _refreshTimer?.cancel();
     _mapController.dispose();
     super.dispose();
@@ -133,10 +137,15 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
   Widget build(BuildContext context) {
     final activeEmployees = _employees.where((e) => e.isWorking).toList();
     final gpsOffCount = _employees.where((e) => e.isGpsOff).length;
+    final displayEmployees = _searchQuery.trim().isEmpty
+        ? _employees
+        : _employees
+            .where((e) => e.fullName.toLowerCase().contains(_searchQuery.trim().toLowerCase()))
+            .toList();
 
     // Build map markers
     final markers = <Marker>[];
-    for (final emp in _employees) {
+    for (final emp in displayEmployees) {
       if (!emp.hasValidLocation) continue;
 
       final isGpsOff = emp.isGpsOff;
@@ -272,47 +281,103 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                           BoxShadow(color: Colors.black38, blurRadius: 10, spreadRadius: 2),
                         ],
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'Live Field Radar',
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                              ),
-                              Text(
-                                '${activeEmployees.length} on duty • ${gpsOffCount > 0 ? '$gpsOffCount GPS OFF' : 'All GPS Normal'}',
-                                style: TextStyle(
-                                  color: gpsOffCount > 0 ? AppColors.error : AppColors.success,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
+                      child: _isSearching
+                          ? Row(
+                              children: [
+                                const Icon(Icons.search, color: AppColors.info, size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _searchController,
+                                    autofocus: true,
+                                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                                    decoration: const InputDecoration(
+                                      hintText: 'Search employee name on map...',
+                                      hintStyle: TextStyle(color: Colors.white38, fontSize: 13),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                    ),
+                                    onChanged: (val) {
+                                      setState(() => _searchQuery = val);
+                                      if (val.trim().isNotEmpty) {
+                                        final match = _employees.cast<LiveEmployeeLocation?>().firstWhere(
+                                          (e) =>
+                                              e != null &&
+                                              e.hasValidLocation &&
+                                              e.fullName.toLowerCase().contains(val.trim().toLowerCase()),
+                                          orElse: () => null,
+                                        );
+                                        if (match != null) {
+                                          _mapController.move(
+                                            LatLng(match.lastLatitude!, match.lastLongitude!),
+                                            16.0,
+                                          );
+                                          _showEmployeeDetails(match);
+                                        }
+                                      }
+                                    },
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.assignment_outlined, color: Colors.white70),
-                                tooltip: 'Attendance Log',
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(builder: (_) => const AdminAttendanceScreen()),
-                                  );
-                                },
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.refresh, color: Colors.white70),
-                                onPressed: () => _fetchLiveLocations(),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                                IconButton(
+                                  icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {
+                                      _searchQuery = '';
+                                      _isSearching = false;
+                                    });
+                                  },
+                                ),
+                              ],
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text(
+                                      'Live Field Radar',
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                    ),
+                                    Text(
+                                      '${activeEmployees.length} on duty • ${gpsOffCount > 0 ? '$gpsOffCount GPS OFF' : 'All GPS Normal'}',
+                                      style: TextStyle(
+                                        color: gpsOffCount > 0 ? AppColors.error : AppColors.success,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.search, color: AppColors.info),
+                                      tooltip: 'Search Employee',
+                                      onPressed: () {
+                                        setState(() => _isSearching = true);
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.assignment_outlined, color: Colors.white70),
+                                      tooltip: 'Attendance Log',
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(builder: (_) => const AdminAttendanceScreen()),
+                                        );
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.refresh, color: Colors.white70),
+                                      onPressed: () => _fetchLiveLocations(),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                     ),
                   ),
                 ],

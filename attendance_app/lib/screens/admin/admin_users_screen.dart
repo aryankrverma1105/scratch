@@ -850,6 +850,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
                             return InkWell(
                               borderRadius: BorderRadius.circular(18),
+                              onLongPress: () => _showUserProfileModal(user),
                               onTap: () {
                                 Navigator.push(
                                   context,

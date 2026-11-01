@@ -61,8 +61,66 @@ function normalizeTimestamp(input) {
   return d.toISOString();
 }
 
+/**
+ * Format date in Indian Standard Time (Asia/Kolkata)
+ * e.g. "02 Nov 2026, 11:45 PM IST"
+ */
+function formatIstDateTime(date = new Date()) {
+  if (!date) return '';
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return '';
+  const dateParts = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(d);
+  return `${dateParts} IST`;
+}
+
+/**
+ * Format IST timestamp for backup folder naming: YYYY-MM-DD_HHmm_IST
+ */
+function getIstFolderTimestamp(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+
+  const getPart = (type) => parts.find((p) => p.type === type)?.value || '';
+  const year = getPart('year');
+  const month = getPart('month');
+  const day = getPart('day');
+  const hour = getPart('hour');
+  const minute = getPart('minute');
+
+  return `${year}-${month}-${day}_${hour}${minute}_IST`;
+}
+
+/**
+ * Get IST year and full month name
+ */
+function getIstYearAndMonth(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  const year = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', year: 'numeric' }).format(d);
+  const month = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', month: 'long' }).format(d);
+  return { year, month };
+}
+
 module.exports = {
   getCompanyDate,
   getDayRangeUtc,
   normalizeTimestamp,
+  formatIstDateTime,
+  getIstFolderTimestamp,
+  getIstYearAndMonth,
 };

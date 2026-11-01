@@ -36,5 +36,7 @@ router.delete('/backups/destinations/:id', backupController.deleteDestination);
 router.get('/backups/history', backupController.getBackupHistory);
 router.post('/backups/trigger', backupController.triggerBackup);
 router.post('/backups/records/:id/retry', backupController.retryBackup);
+router.post('/backups/records/:id/verify', backupController.verifyBackup);
+router.post('/backups/records/:id/restore', backupController.restoreBackup);
 
 module.exports = router;

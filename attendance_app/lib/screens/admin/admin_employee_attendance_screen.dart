@@ -4,6 +4,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
 import '../../models/attendance_model.dart';
 import '../../models/user_model.dart';
+import '../../widgets/searchable_employee_picker.dart';
 import 'admin_route_history_screen.dart';
 
 class AdminEmployeeAttendanceScreen extends StatefulWidget {
@@ -102,99 +103,16 @@ class _AdminEmployeeAttendanceScreenState
     });
   }
 
-  void _showEmployeePicker() {
-    showModalBottomSheet(
+  void _showEmployeePicker() async {
+    final picked = await showSearchableEmployeePicker(
       context: context,
-      backgroundColor: AppColors.cardDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSheetState) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Select Employee',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: AppColors.textMuted),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.5,
-                  ),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _allEmployees.length,
-                    separatorBuilder: (_, __) => const Divider(color: Colors.white10),
-                    itemBuilder: (context, idx) {
-                      final u = _allEmployees[idx];
-                      final isSelected = u.id == _currentEmployee?.id;
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: CircleAvatar(
-                          backgroundColor: isSelected
-                              ? AppColors.info
-                              : AppColors.inputDark,
-                          child: Text(
-                            u.fullName.isNotEmpty
-                                ? u.fullName[0].toUpperCase()
-                                : 'E',
-                            style: TextStyle(
-                              color: isSelected ? Colors.black : Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        title: Text(
-                          u.fullName,
-                          style: TextStyle(
-                            color: isSelected ? AppColors.info : Colors.white,
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.w500,
-                          ),
-                        ),
-                        subtitle: Text(
-                          u.department ?? 'Field Employee',
-                          style: const TextStyle(
-                            color: AppColors.textMuted,
-                            fontSize: 12,
-                          ),
-                        ),
-                        trailing: isSelected
-                            ? const Icon(Icons.check_circle, color: AppColors.info)
-                            : null,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _switchEmployee(u);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+      employees: _allEmployees,
+      selected: _currentEmployee,
+      title: 'Switch Employee',
     );
+    if (picked != null && picked.id != _currentEmployee?.id) {
+      _switchEmployee(picked);
+    }
   }
 
   void _showSelfieDetailModal({

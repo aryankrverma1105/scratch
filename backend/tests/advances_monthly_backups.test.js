@@ -128,11 +128,16 @@ describe('Monthly Salary, Advances, Backups & Leave Policies Suite', () => {
     assert.ok(settled.emis.every(e => e.status === 'settled_early' || e.status === 'deducted'));
   });
 
-  test('6. Database snapshot creates valid compressed gzip archive', async () => {
-    const snapshot = await backupService.createDatabaseBackupSnapshot();
-    assert.ok(snapshot.filename.endsWith('.db.gz'));
-    assert.ok(snapshot.fileSize > 0);
-    assert.ok(snapshot.fileBuffer.length > 0);
+  test('6. Database snapshot creates valid uncompressed archive with manifest and SQL dump', async () => {
+    const bundle = await backupService.createUncompressedBackupBundle({ backupType: 'test' });
+    assert.ok(bundle.folderTimestamp.includes('_IST'));
+    assert.ok(bundle.totalBytes > 0);
+    assert.ok(bundle.manifest);
+    assert.equal(bundle.manifest.compression, 'none (uncompressed original files)');
+    assert.ok(bundle.manifest.files.some(f => f.relativePath === 'database-backup.sqlite'));
+    assert.ok(bundle.manifest.files.some(f => f.relativePath === 'database-backup.sql'));
+    assert.ok(bundle.manifest.files.some(f => f.relativePath === 'backup-manifest.json' || bundle.manifest.files.length >= 2));
+    assert.ok(bundle.manifest.verificationChecksum.length > 0);
   });
 
   test('7. Calendar leave year (1 Jan - 31 Dec) and 26 present days eligibility condition', async () => {

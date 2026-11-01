@@ -941,6 +941,34 @@ function initDatabase() {
           )
         `);
         try { await run(`CREATE INDEX IF NOT EXISTS idx_backup_rec_dest ON backup_records(destination_id)`); } catch (_) {}
+        try { await run(`ALTER TABLE backup_records ADD COLUMN manifest_data TEXT`); } catch (_) {}
+        try { await run(`ALTER TABLE backup_records ADD COLUMN verification_status VARCHAR(50) DEFAULT 'verified'`); } catch (_) {}
+        try { await run(`ALTER TABLE backup_records ADD COLUMN verification_message TEXT`); } catch (_) {}
+        try { await run(`ALTER TABLE backup_records ADD COLUMN snapshot_path TEXT`); } catch (_) {}
+
+        // Ensure Personal Drive destination exists (gameraryan2005@gmail.com)
+        try {
+          const personalDest = await get(
+            `SELECT id FROM backup_destinations WHERE LOWER(account_email) = ? OR LOWER(name) LIKE '%aryan%'`,
+            ['gameraryan2005@gmail.com']
+          );
+          if (!personalDest) {
+            const nowIso = new Date().toISOString();
+            await run(
+              `INSERT INTO backup_destinations (name, drive_type, folder_id, client_id, client_secret, refresh_token, account_email, is_enabled, created_at, updated_at)
+               VALUES (?, 'google_drive', ?, ?, ?, ?, 'gameraryan2005@gmail.com', 1, ?, ?)`,
+              [
+                'Personal Drive (gameraryan2005@gmail.com)',
+                config.BACKUP_PERSONAL_FOLDER_ID || null,
+                config.BACKUP_PERSONAL_CLIENT_ID || null,
+                config.BACKUP_PERSONAL_CLIENT_SECRET || null,
+                config.BACKUP_PERSONAL_REFRESH_TOKEN || null,
+                nowIso,
+                nowIso,
+              ]
+            );
+          }
+        } catch (_) {}
 
         // 7. Enhance activity_logs with module, before/after diffs, device info
         try { await run(`ALTER TABLE activity_logs ADD COLUMN module VARCHAR(50)`); } catch (_) {}

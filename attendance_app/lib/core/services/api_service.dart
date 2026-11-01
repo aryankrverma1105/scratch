@@ -1336,6 +1336,24 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> verifyBackup(int recordId) async {
+    try {
+      final response = await _dio.post('/api/admin/backups/records/$recordId/verify');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to verify backup integrity');
+    }
+  }
+
+  Future<Map<String, dynamic>> restoreBackup(int recordId) async {
+    try {
+      final response = await _dio.post('/api/admin/backups/records/$recordId/restore');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to restore backup');
+    }
+  }
+
   // --- Admin Audit / Activity Logs ---
 
   Future<Map<String, dynamic>> getActivityLogs({

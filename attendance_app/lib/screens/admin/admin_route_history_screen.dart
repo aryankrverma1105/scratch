@@ -6,6 +6,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
 import '../../models/location_model.dart';
 import '../../models/user_model.dart';
+import '../../widgets/searchable_employee_picker.dart';
 
 class AdminRouteHistoryScreen extends StatefulWidget {
   final int? initialUserId;
@@ -233,39 +234,52 @@ class _AdminRouteHistoryScreenState extends State<AdminRouteHistoryScreen> {
             color: AppColors.cardDark,
             child: Row(
               children: [
-                // Employee Dropdown
+                // Searchable Employee Picker Button
                 Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: AppColors.inputDark,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<int>(
-                        value: _selectedUserId,
-                        isExpanded: true,
-                        dropdownColor: AppColors.cardDark,
-                        icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
-                        items: _allUsers.map((u) {
-                          return DropdownMenuItem<int>(
-                            value: u.id,
+                  child: InkWell(
+                    onTap: () async {
+                      final selectedModel = _allUsers.cast<UserModel?>().firstWhere(
+                        (u) => u?.id == _selectedUserId,
+                        orElse: () => null,
+                      );
+                      final picked = await showSearchableEmployeePicker(
+                        context: context,
+                        employees: _allUsers,
+                        selected: selectedModel,
+                        title: 'Select Employee for Route',
+                      );
+                      if (picked != null && picked.id != _selectedUserId) {
+                        setState(() {
+                          _selectedUserId = picked.id;
+                          _sliderIndex = 0;
+                        });
+                        _fetchRoute();
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                      decoration: BoxDecoration(
+                        color: AppColors.inputDark,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_search, color: AppColors.info, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
                             child: Text(
-                              u.fullName,
-                              style: const TextStyle(color: Colors.white, fontSize: 14),
+                              _allUsers.firstWhere(
+                                (u) => u.id == _selectedUserId,
+                                orElse: () => UserModel(id: 0, email: '', fullName: 'Select Employee', role: 'employee'),
+                              ).fullName,
+                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
                               overflow: TextOverflow.ellipsis,
                             ),
-                          );
-                        }).toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setState(() {
-                              _selectedUserId = val;
-                              _sliderIndex = 0;
-                            });
-                            _fetchRoute();
-                          }
-                        },
+                          ),
+                          const Icon(Icons.arrow_drop_down, color: Colors.white60, size: 18),
+                        ],
                       ),
                     ),
                   ),

@@ -53,6 +53,12 @@ class _AdminAuditLogsScreenState extends State<AdminAuditLogsScreen> {
     _loadLogs();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadLogs({int page = 1}) async {
     setState(() {
       _isLoading = true;
@@ -128,6 +134,7 @@ class _AdminAuditLogsScreenState extends State<AdminAuditLogsScreen> {
           child: Column(
             children: [
               _buildHeader(),
+              _buildSearchBar(),
               _buildFilterChips(),
               Expanded(
                 child: _isLoading
@@ -178,6 +185,39 @@ class _AdminAuditLogsScreenState extends State<AdminAuditLogsScreen> {
             onPressed: () => _loadLogs(page: _page),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      child: TextField(
+        controller: _searchController,
+        style: const TextStyle(color: Colors.white, fontSize: 13),
+        onSubmitted: (val) {
+          setState(() => _searchQuery = val.trim());
+          _loadLogs(page: 1);
+        },
+        decoration: InputDecoration(
+          hintText: 'Search audit logs by employee name, action, details...',
+          hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+          prefixIcon: const Icon(Icons.search, color: Colors.white70, size: 18),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear, color: Colors.white60, size: 16),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() => _searchQuery = '');
+                    _loadLogs(page: 1);
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: AppColors.cardDark,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        ),
       ),
     );
   }

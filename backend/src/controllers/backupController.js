@@ -23,6 +23,28 @@ async function listDestinations(req, res) {
   }
 
   try {
+    // Ensure Personal Gmail destination is present
+    const personalDest = await db.get(
+      `SELECT id FROM backup_destinations WHERE LOWER(account_email) = ? OR LOWER(name) LIKE '%aryan%'`,
+      ['gameraryan2005@gmail.com']
+    );
+    if (!personalDest) {
+      const nowIso = new Date().toISOString();
+      await db.run(
+        `INSERT INTO backup_destinations (name, drive_type, folder_id, client_id, client_secret, refresh_token, account_email, is_enabled, created_at, updated_at)
+         VALUES (?, 'google_drive', ?, ?, ?, ?, 'gameraryan2005@gmail.com', 1, ?, ?)`,
+        [
+          'Personal Drive (gameraryan2005@gmail.com)',
+          process.env.BACKUP_PERSONAL_FOLDER_ID || null,
+          process.env.BACKUP_PERSONAL_CLIENT_ID || null,
+          process.env.BACKUP_PERSONAL_CLIENT_SECRET || null,
+          process.env.BACKUP_PERSONAL_REFRESH_TOKEN || null,
+          nowIso,
+          nowIso,
+        ]
+      );
+    }
+
     const destinations = await db.query(
       `SELECT id, name, drive_type, folder_id, account_email, is_enabled,
               last_test_status, last_test_message, last_test_at, created_at, updated_at
@@ -230,6 +252,40 @@ async function retryBackup(req, res) {
   }
 }
 
+/**
+ * Verify backup integrity and manifest
+ */
+async function verifyBackup(req, res) {
+  if (!isRootSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'Access denied: Super Admin privileges required for backups' });
+  }
+
+  try {
+    const recordId = parseInt(req.params.id, 10);
+    const result = await backupService.verifyBackupRecord(recordId);
+    return res.json(result);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+}
+
+/**
+ * Safely restore from a backup record
+ */
+async function restoreBackup(req, res) {
+  if (!isRootSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'Access denied: Super Admin privileges required for backups' });
+  }
+
+  try {
+    const recordId = parseInt(req.params.id, 10);
+    const result = await backupService.restoreBackupRecord(recordId, { userId: req.user.id });
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to restore backup', details: err.message });
+  }
+}
+
 module.exports = {
   listDestinations,
   saveDestination,
@@ -238,5 +294,7 @@ module.exports = {
   triggerBackup,
   getBackupHistory,
   retryBackup,
+  verifyBackup,
+  restoreBackup,
 };
 

@@ -495,6 +495,31 @@ class _AdminLeaveScreenState extends State<AdminLeaveScreen> with SingleTickerPr
                 ),
                 const SizedBox(height: 12),
 
+                // Search Box across all leave tabs
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  child: TextField(
+                    style: const TextStyle(color: Colors.white, fontSize: 13),
+                    onChanged: (val) => setState(() => _searchQuery = val),
+                    decoration: InputDecoration(
+                      hintText: 'Search employee name across leaves, absences & balances...',
+                      hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                      prefixIcon: const Icon(Icons.search, color: Colors.white70, size: 18),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, color: Colors.white70, size: 16),
+                              onPressed: () => setState(() => _searchQuery = ''),
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: AppColors.cardDark,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
                 // Tab Bar
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -539,31 +564,15 @@ class _AdminLeaveScreenState extends State<AdminLeaveScreen> with SingleTickerPr
   }
 
   Widget _buildTeamBalancesTab(List<AdminUserLeaveSummaryModel> list) {
-    return Column(
-      children: [
-        // Search Box
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-          child: TextField(
-            style: const TextStyle(color: Colors.white, fontSize: 13),
-            onChanged: (val) => setState(() => _searchQuery = val),
-            decoration: InputDecoration(
-              hintText: 'Search employee by name, department...',
-              hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-              prefixIcon: const Icon(Icons.search, color: Colors.white70, size: 18),
-              filled: true,
-              fillColor: AppColors.cardDark,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.symmetric(vertical: 10),
-            ),
-          ),
-        ),
-        Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            itemCount: list.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
+    if (list.isEmpty) {
+      return const Center(child: Text('No employees found matching search', style: TextStyle(color: AppColors.textMuted)));
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      itemCount: list.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
               final u = list[index];
               return Container(
                 padding: const EdgeInsets.all(14),
@@ -639,23 +648,26 @@ class _AdminLeaveScreenState extends State<AdminLeaveScreen> with SingleTickerPr
                 ),
               );
             },
-          ),
-        ),
-      ],
-    );
+          );
   }
 
   Widget _buildTeamLeavesTab() {
-    if (_teamLeaves.isEmpty) {
+    final filtered = _searchQuery.trim().isEmpty
+        ? _teamLeaves
+        : _teamLeaves
+            .where((l) => (l.userName ?? '').toLowerCase().contains(_searchQuery.trim().toLowerCase()))
+            .toList();
+
+    if (filtered.isEmpty) {
       return const Center(child: Text('No leave records found', style: TextStyle(color: AppColors.textMuted)));
     }
 
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      itemCount: _teamLeaves.length,
+      itemCount: filtered.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
-        final l = _teamLeaves[index];
+        final l = filtered[index];
         final isConfirmed = l.isConfirmed;
 
         return Container(
@@ -708,16 +720,22 @@ class _AdminLeaveScreenState extends State<AdminLeaveScreen> with SingleTickerPr
   }
 
   Widget _buildTeamAbsencesTab() {
-    if (_teamAbsences.isEmpty) {
+    final filtered = _searchQuery.trim().isEmpty
+        ? _teamAbsences
+        : _teamAbsences
+            .where((a) => (a.userName ?? '').toLowerCase().contains(_searchQuery.trim().toLowerCase()))
+            .toList();
+
+    if (filtered.isEmpty) {
       return const Center(child: Text('No absences recorded', style: TextStyle(color: AppColors.textMuted)));
     }
 
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      itemCount: _teamAbsences.length,
+      itemCount: filtered.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
-        final a = _teamAbsences[index];
+        final a = filtered[index];
         final isEarned = a.isEarnedLeaveDeducted;
 
         return Container(

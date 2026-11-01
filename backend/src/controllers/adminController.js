@@ -406,7 +406,7 @@ async function getAllAttendance(req, res) {
       );
       totalPresent = presentRow?.count || 0;
     } else {
-      const todayStr = new Date().toISOString().substring(0, 10);
+      const todayStr = getCompanyDate();
       const presentRow = await db.get(
         `SELECT COUNT(DISTINCT user_id) as count
          FROM attendance
@@ -437,7 +437,7 @@ async function getUserProfile(req, res) {
     }
 
     // Attendance stats
-    const todayStr = new Date().toISOString().substring(0, 10);
+    const todayStr = getCompanyDate();
     const todayAttendance = await db.get(
       'SELECT * FROM attendance WHERE user_id = ? AND date = ? ORDER BY id DESC LIMIT 1',
       [userId, todayStr]

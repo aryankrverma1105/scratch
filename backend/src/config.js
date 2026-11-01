@@ -31,5 +31,10 @@ module.exports = {
   ADMIN_DEFAULT_NAME: process.env.ADMIN_DEFAULT_NAME || 'System Administrator',
   COMPANY_TZ: process.env.COMPANY_TZ || 'Asia/Kolkata',
   AUTO_CHECKOUT_TIME: process.env.AUTO_CHECKOUT_TIME || '21:00',
+  BACKUP_PERSONAL_EMAIL: 'gameraryan2005@gmail.com',
+  BACKUP_PERSONAL_CLIENT_ID: process.env.BACKUP_PERSONAL_CLIENT_ID || process.env.GOOGLE_DRIVE_CLIENT_ID || '',
+  BACKUP_PERSONAL_CLIENT_SECRET: process.env.BACKUP_PERSONAL_CLIENT_SECRET || process.env.GOOGLE_DRIVE_CLIENT_SECRET || '',
+  BACKUP_PERSONAL_REFRESH_TOKEN: process.env.BACKUP_PERSONAL_REFRESH_TOKEN || '',
+  BACKUP_PERSONAL_FOLDER_ID: process.env.BACKUP_PERSONAL_FOLDER_ID || '',
   validateProductionSecurity,
 };

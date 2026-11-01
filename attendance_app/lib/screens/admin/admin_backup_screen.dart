@@ -118,6 +118,94 @@ class _AdminBackupScreenState extends State<AdminBackupScreen> with SingleTicker
     }
   }
 
+  Future<void> _verifyBackupRecord(int id) async {
+    try {
+      final res = await ApiService().verifyBackup(id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.success,
+            content: Text(res['message'] ?? 'Backup integrity and checksum verified successfully'),
+          ),
+        );
+        _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.error,
+            content: Text('Verification failed: ${e.toString().replaceFirst('Exception: ', '')}'),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _restoreBackupRecord(int id, String name) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Confirm Database Restore', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Are you sure you want to safely restore the system database from run "$name"?', style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: Colors.amber.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+              child: const Row(
+                children: [
+                  Icon(Icons.shield, color: Colors.amber, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('A safe pre-restore snapshot will be created automatically before restoration.', style: TextStyle(color: Colors.amber, fontSize: 11.5)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: Colors.white70))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Proceed & Restore', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        final res = await ApiService().restoreBackup(id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: AppColors.success,
+              content: Text(res['message'] ?? 'Database restored successfully'),
+            ),
+          );
+          _loadData();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: AppColors.error,
+              content: Text('Restore failed: ${e.toString().replaceFirst('Exception: ', '')}'),
+            ),
+          );
+        }
+      }
+    }
+  }
+
   void _showAddEditDestinationDialog([BackupDestinationModel? existing]) {
     final nameController = TextEditingController(text: existing?.name ?? '');
     final folderController = TextEditingController(text: existing?.folderId ?? '');
@@ -300,6 +388,25 @@ class _AdminBackupScreenState extends State<AdminBackupScreen> with SingleTicker
           ? const Center(child: CircularProgressIndicator(color: AppColors.info))
           : Column(
               children: [
+                if (_errorMessage != null)
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.error),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(_errorMessage!, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ),
                 // Top Banner with Manual Trigger
                 Container(
                   margin: const EdgeInsets.all(16),
@@ -322,7 +429,7 @@ class _AdminBackupScreenState extends State<AdminBackupScreen> with SingleTicker
                             ),
                             SizedBox(height: 2),
                             Text(
-                              'Runs every night at 02:00 AM IST (Compressed .db.gz snapshot)',
+                              'Runs daily at 02:00 AM IST (Uncompressed .sql, .sqlite, selfies & docs)',
                               style: TextStyle(color: AppColors.textMuted, fontSize: 11.5),
                             ),
                           ],
@@ -607,6 +714,38 @@ class _AdminBackupScreenState extends State<AdminBackupScreen> with SingleTicker
                     Text(
                       '${r.backupType == 'manual' ? 'Manual Trigger' : 'Daily Schedule (02:00 AM)'} • ${r.createdAt}',
                       style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: (r.verificationStatus == 'verified' ? AppColors.success : Colors.orange).withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            r.verificationStatus.toUpperCase(),
+                            style: TextStyle(
+                              color: r.verificationStatus == 'verified' ? AppColors.success : Colors.orange,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () => _verifyBackupRecord(r.id),
+                          child: const Text('Verify Checksum', style: TextStyle(color: AppColors.info, fontSize: 11, fontWeight: FontWeight.w600)),
+                        ),
+                        if (isSuccess) ...[
+                          const SizedBox(width: 12),
+                          InkWell(
+                            onTap: () => _restoreBackupRecord(r.id, r.filename),
+                            child: const Text('Restore DB', style: TextStyle(color: Colors.amberAccent, fontSize: 11, fontWeight: FontWeight.w600)),
+                          ),
+                        ],
+                      ],
                     ),
                     if (r.errorMessage != null) ...[
                       const SizedBox(height: 4),

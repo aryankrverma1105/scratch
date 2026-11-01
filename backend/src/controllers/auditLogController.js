@@ -1,4 +1,5 @@
 const db = require('../db');
+const { getCompanyDate } = require('../utils/timeUtils');
 
 /**
  * Build where clause & params for activity logs queries
@@ -131,7 +132,7 @@ async function exportActivityLogsCsv(req, res) {
     ].join(','));
 
     const csvContent = [headers.join(','), ...rows].join('\r\n');
-    const nowStr = new Date().toISOString().substring(0, 10);
+    const nowStr = getCompanyDate();
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="sologix_audit_logs_${nowStr}.csv"`);
