@@ -19,8 +19,8 @@ class UserModel {
     this.isActive = true,
   });
 
-  bool get isAdmin => role == 'admin';
-  bool get isRootAdmin => id == 1 || email.trim().toLowerCase() == 'admin@company.com';
+  bool get isAdmin => role == 'admin' || role == 'super_admin';
+  bool get isRootAdmin => id == 1 || email.trim().toLowerCase() == 'admin@company.com' || role == 'super_admin';
 
   String get initials {
     final parts = fullName.trim().split(RegExp(r'\s+'));

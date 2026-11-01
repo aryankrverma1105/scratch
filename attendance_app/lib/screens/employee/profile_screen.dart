@@ -215,11 +215,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         child: Column(
                           children: [
-                            if (user?.isAdmin ?? false) ...[
+                            if (user?.isRootAdmin ?? false) ...[
                               ListTile(
                                 leading: const Icon(Icons.cloud_sync_outlined, color: Colors.cyanAccent),
                                 title: const Text('Google Drive Automated Backups', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                subtitle: const Text('Daily SQLite backups, OAuth destinations & test', style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+                                subtitle: const Text('Super Admin • Daily SQLite backups & OAuth setup', style: TextStyle(color: AppColors.textDim, fontSize: 11)),
                                 trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
                                 onTap: () {
                                   Navigator.push(
@@ -229,6 +229,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 },
                               ),
                               const Divider(color: Colors.white12, height: 1),
+                            ],
+                            if (user?.isAdmin ?? false) ...[
                               ListTile(
                                 leading: const Icon(Icons.receipt_long_outlined, color: Colors.deepPurpleAccent),
                                 title: const Text('System Activity Audit Logs', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),

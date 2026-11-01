@@ -2,10 +2,26 @@ const db = require('../db');
 const backupService = require('../services/backupService');
 const { logActivity } = require('../services/activityLogger');
 
+function isRootSuperAdmin(user) {
+  if (!user) return false;
+  const rootEmail = (process.env.ADMIN_DEFAULT_EMAIL || 'admin@company.com').toLowerCase();
+  return (
+    user.id === 1 ||
+    (user.email && user.email.toLowerCase() === rootEmail) ||
+    (user.email && user.email.toLowerCase() === 'admin@company.com') ||
+    user.role === 'super_admin'
+  );
+}
+
+
 /**
  * List all backup destinations
  */
 async function listDestinations(req, res) {
+  if (!isRootSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'Access denied: Super Admin privileges required for backups' });
+  }
+
   try {
     const destinations = await db.query(
       `SELECT id, name, drive_type, folder_id, account_email, is_enabled,
@@ -23,6 +39,10 @@ async function listDestinations(req, res) {
  * Save or update a backup destination
  */
 async function saveDestination(req, res) {
+  if (!isRootSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'Access denied: Super Admin privileges required for backups' });
+  }
+
   try {
     const { id, name, folderId, clientId, clientSecret, refreshToken, accountEmail, isEnabled } = req.body;
     if (!name || !name.trim()) {
@@ -107,6 +127,10 @@ async function saveDestination(req, res) {
  * Test a destination connection
  */
 async function testDestination(req, res) {
+  if (!isRootSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'Access denied: Super Admin privileges required for backups' });
+  }
+
   try {
     const destinationId = parseInt(req.params.id, 10);
     const result = await backupService.testDestinationConnection(destinationId);
@@ -120,6 +144,10 @@ async function testDestination(req, res) {
  * Delete a destination
  */
 async function deleteDestination(req, res) {
+  if (!isRootSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'Access denied: Super Admin privileges required for backups' });
+  }
+
   try {
     const destinationId = parseInt(req.params.id, 10);
     const existing = await db.get('SELECT * FROM backup_destinations WHERE id = ?', [destinationId]);
@@ -145,6 +173,10 @@ async function deleteDestination(req, res) {
  * Trigger an immediate manual backup
  */
 async function triggerBackup(req, res) {
+  if (!isRootSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'Access denied: Super Admin privileges required for backups' });
+  }
+
   try {
     const { destinationId } = req.body;
     const result = await backupService.performBackup({
@@ -165,6 +197,10 @@ async function triggerBackup(req, res) {
  * Get backup history / records
  */
 async function getBackupHistory(req, res) {
+  if (!isRootSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'Access denied: Super Admin privileges required for backups' });
+  }
+
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 100);
     const records = await db.query(
@@ -181,6 +217,10 @@ async function getBackupHistory(req, res) {
  * Retry a failed backup upload
  */
 async function retryBackup(req, res) {
+  if (!isRootSuperAdmin(req.user)) {
+    return res.status(403).json({ error: 'Access denied: Super Admin privileges required for backups' });
+  }
+
   try {
     const recordId = parseInt(req.params.id, 10);
     const result = await backupService.retryBackupRecord(recordId);
