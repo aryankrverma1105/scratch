@@ -1248,7 +1248,56 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           ),
-                        ],
+                                                  const SizedBox(height: 12),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.cardDark,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: Colors.cyanAccent.withOpacity(0.35)),
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const AdminBackupScreen(),
+                                  ),
+                                );
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: Color(0x3300BCD4),
+                                      child: Icon(Icons.cloud_sync_outlined, color: Colors.cyanAccent, size: 24),
+                                    ),
+                                    SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Google Drive Automated Backups',
+                                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
+                                          SizedBox(height: 3),
+                                          Text(
+                                            'Daily 02:00 AM IST SQLite backups, multi-account OAuth destinations & instant test/upload',
+                                            style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_forward_ios, color: Colors.cyanAccent, size: 14),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+],
 
                         const SizedBox(height: 25),
 

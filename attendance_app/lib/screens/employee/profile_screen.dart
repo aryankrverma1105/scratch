@@ -6,6 +6,8 @@ import '../../core/services/location_service.dart';
 import '../../models/user_model.dart';
 import '../auth/login_screen.dart';
 import 'permissions_screen.dart';
+import '../admin/admin_backup_screen.dart';
+import '../admin/admin_audit_logs_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -213,6 +215,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         child: Column(
                           children: [
+                            if (user?.isAdmin ?? false) ...[
+                              ListTile(
+                                leading: const Icon(Icons.cloud_sync_outlined, color: Colors.cyanAccent),
+                                title: const Text('Google Drive Automated Backups', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                subtitle: const Text('Daily SQLite backups, OAuth destinations & test', style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+                                trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const AdminBackupScreen()),
+                                  );
+                                },
+                              ),
+                              const Divider(color: Colors.white12, height: 1),
+                              ListTile(
+                                leading: const Icon(Icons.receipt_long_outlined, color: Colors.deepPurpleAccent),
+                                title: const Text('System Activity Audit Logs', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                subtitle: const Text('Audit logs of all changes, diffs & CSV export', style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+                                trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const AdminAuditLogsScreen()),
+                                  );
+                                },
+                              ),
+                              const Divider(color: Colors.white12, height: 1),
+                            ],
                             ListTile(
                               leading: const Icon(Icons.shield_outlined, color: AppColors.info),
                               title: const Text('Tracking Permissions & Battery Setup', style: TextStyle(color: Colors.white)),
