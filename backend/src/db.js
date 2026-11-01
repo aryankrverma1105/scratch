@@ -1044,6 +1044,16 @@ function initDatabase() {
         }
       },
     },
+    {
+      version: 10,
+      name: 'uncompressed_backups_and_manifest_columns',
+      up: async () => {
+        try { await run('ALTER TABLE backup_records ADD COLUMN manifest_data TEXT'); } catch (_) {}
+        try { await run('ALTER TABLE backup_records ADD COLUMN verification_status VARCHAR(50) DEFAULT \'verified\''); } catch (_) {}
+        try { await run('ALTER TABLE backup_records ADD COLUMN verification_message TEXT'); } catch (_) {}
+        try { await run('ALTER TABLE backup_records ADD COLUMN snapshot_path TEXT'); } catch (_) {}
+      },
+    },
   ];
 
   for (const m of migrations) {

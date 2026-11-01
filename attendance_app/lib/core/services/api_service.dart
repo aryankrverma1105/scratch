@@ -48,8 +48,14 @@ class ApiService {
           final statusCode = error.response?.statusCode;
           final data = error.response?.data;
           String? serverMessage;
-          if (data is Map && (data['error'] != null || data['message'] != null)) {
-            serverMessage = (data['error'] ?? data['message']).toString();
+          if (data is Map) {
+            final base = (data['error'] ?? data['message'])?.toString();
+            final details = data['details']?.toString();
+            if (base != null && details != null && details.isNotEmpty) {
+              serverMessage = '$base: $details';
+            } else {
+              serverMessage = base ?? details;
+            }
           }
           if (statusCode == 401) {
             return serverMessage ?? 'Invalid username or password.';
@@ -1259,7 +1265,7 @@ class ApiService {
       final list = (response.data['destinations'] as List? ?? []);
       return list.map((d) => BackupDestinationModel.fromJson(d)).toList();
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch backup destinations');
+      throw Exception(formatDioError(e));
     }
   }
 
@@ -1286,7 +1292,7 @@ class ApiService {
       });
       return BackupDestinationModel.fromJson(response.data['destination']);
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to save backup destination');
+      throw Exception(formatDioError(e));
     }
   }
 
@@ -1295,7 +1301,7 @@ class ApiService {
       final response = await _dio.post('/api/admin/backups/destinations/$id/test');
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to test backup destination');
+      throw Exception(formatDioError(e));
     }
   }
 
@@ -1303,7 +1309,7 @@ class ApiService {
     try {
       await _dio.delete('/api/admin/backups/destinations/$id');
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to delete backup destination');
+      throw Exception(formatDioError(e));
     }
   }
 
@@ -1313,7 +1319,7 @@ class ApiService {
       final list = (response.data['records'] as List? ?? []);
       return list.map((r) => BackupRecordModel.fromJson(r)).toList();
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch backup history');
+      throw Exception(formatDioError(e));
     }
   }
 
@@ -1324,7 +1330,7 @@ class ApiService {
       });
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to trigger backup');
+      throw Exception(formatDioError(e));
     }
   }
 
@@ -1332,7 +1338,7 @@ class ApiService {
     try {
       await _dio.post('/api/admin/backups/records/$recordId/retry');
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to retry backup upload');
+      throw Exception(formatDioError(e));
     }
   }
 
@@ -1341,7 +1347,7 @@ class ApiService {
       final response = await _dio.post('/api/admin/backups/records/$recordId/verify');
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to verify backup integrity');
+      throw Exception(formatDioError(e));
     }
   }
 
@@ -1350,7 +1356,7 @@ class ApiService {
       final response = await _dio.post('/api/admin/backups/records/$recordId/restore');
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to restore backup');
+      throw Exception(formatDioError(e));
     }
   }
 
