@@ -426,7 +426,9 @@ async function getAttendanceMetricsForPeriod(userId, periodOrMonth) {
     attendanceRows
       .filter((r) => {
         if (isCycle && r.date < officialStartDate) return false;
-        return r.status === 'checked_out' || r.status === 'checked_in';
+        if (user.joining_date && r.date < user.joining_date) return false;
+        if (user.exit_date && r.date > user.exit_date) return false;
+        return r.status && !['cancelled', 'rejected'].includes(r.status);
       })
       .map((r) => r.date)
   );
@@ -446,7 +448,13 @@ async function getAttendanceMetricsForPeriod(userId, periodOrMonth) {
     );
     for (const d of dates) {
       if (!isCycle || d >= officialStartDate) {
-        paidLeaveDates.add(d);
+        if (!user.joining_date || d >= user.joining_date) {
+          if (!user.exit_date || d <= user.exit_date) {
+            if (!presentDates.has(d)) {
+              paidLeaveDates.add(d);
+            }
+          }
+        }
       }
     }
   }
@@ -463,27 +471,38 @@ async function getAttendanceMetricsForPeriod(userId, periodOrMonth) {
       if (abs.absence_type === 'unpaid') {
         unpaidAbsenceDates.add(abs.date);
       } else if (abs.absence_type === 'earned_leave_deducted') {
-        paidLeaveDates.add(abs.date);
+        if (!user.joining_date || abs.date >= user.joining_date) {
+          if (!user.exit_date || abs.date <= user.exit_date) {
+            if (!presentDates.has(abs.date)) {
+              paidLeaveDates.add(abs.date);
+            }
+          }
+        }
       }
     }
   }
 
-  // Calculate day counts
-  let presentDaysCount = 0;
-  let paidLeaveDaysCount = 0;
-  let absentDaysCount = 0;
+  // Calculate day counts:
+  // Each distinct valid attendance calendar date is strictly 1 present day
+  const presentDaysCount = presentDates.size;
+  const paidLeaveDaysCount = paidLeaveDates.size;
+  const payableDays = presentDaysCount + paidLeaveDaysCount;
 
+  // Absent days: only scheduled working calendar dates that have already occurred
+  // (dt <= effectiveToday where effectiveToday = min(todayStr, endDate))
+  // where the employee was neither present nor on paid leave
+  const todayStr = getCompanyDate();
+  const isPastCycle = resolved.status === 'closed' || resolved.status === 'finalized' || endDate < todayStr;
+  const effectiveToday = isPastCycle ? endDate : (todayStr < startDate ? startDate : (todayStr < endDate ? todayStr : endDate));
+
+  let absentDaysCount = 0;
   for (const dt of activeWorkingDates) {
-    if (presentDates.has(dt)) {
-      presentDaysCount += 1;
-    } else if (paidLeaveDates.has(dt)) {
-      paidLeaveDaysCount += 1;
-    } else {
-      absentDaysCount += 1;
+    if (dt <= effectiveToday) {
+      if (!presentDates.has(dt) && !paidLeaveDates.has(dt)) {
+        absentDaysCount += 1;
+      }
     }
   }
-
-  const payableDays = presentDaysCount + paidLeaveDaysCount;
 
   return {
     periodCode: resolved.cycleCode,
