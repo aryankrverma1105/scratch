@@ -1054,6 +1054,18 @@ function initDatabase() {
         try { await run('ALTER TABLE backup_records ADD COLUMN snapshot_path TEXT'); } catch (_) {}
       },
     },
+    {
+      version: 11,
+      name: 'advance_emi_deduction_and_repayment_tracking',
+      up: async () => {
+        try { await run('ALTER TABLE salary_advance_emis ADD COLUMN due_cycle_code VARCHAR(50)'); } catch (_) {}
+        try { await run('ALTER TABLE salary_advance_emis ADD COLUMN repayment_reference VARCHAR(100)'); } catch (_) {}
+        try { await run('ALTER TABLE salary_advances ADD COLUMN total_installments_paid INTEGER DEFAULT 0'); } catch (_) {}
+        try { await run('CREATE INDEX IF NOT EXISTS idx_adv_user_status ON salary_advances(user_id, status)'); } catch (_) {}
+        try { await run('CREATE INDEX IF NOT EXISTS idx_emi_user_status ON salary_advance_emis(user_id, status, due_month)'); } catch (_) {}
+        try { await run('CREATE INDEX IF NOT EXISTS idx_emi_cycle ON salary_advance_emis(due_cycle_code)'); } catch (_) {}
+      },
+    },
   ];
 
   for (const m of migrations) {

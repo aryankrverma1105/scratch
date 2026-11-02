@@ -38,6 +38,10 @@ describe('Monthly Salary, Advances, Backups & Leave Policies Suite', () => {
       effectiveDate: '2026-11-01',
       createdBy: adminUserId,
     });
+
+    await db.run('DELETE FROM salary_advances WHERE user_id = ?', [testUserId]);
+    await db.run('DELETE FROM salary_advance_emis WHERE user_id = ?', [testUserId]);
+    await db.run('DELETE FROM payroll_records WHERE user_id = ?', [testUserId]);
   });
 
   test('1. Calendar-month salary cycle resolution & auto-reconciliation', async () => {

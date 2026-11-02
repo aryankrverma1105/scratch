@@ -42,6 +42,7 @@ router.get('/admin/payroll/records', requireRole('admin'), salaryController.getP
 router.get('/admin/advances', requireRole('admin'), salaryController.listAdvances);
 router.post('/admin/advances', requireRole('admin'), salaryController.createAdvance);
 router.get('/admin/advances/:id', requireRole('admin'), salaryController.getAdvanceDetails);
+router.put('/admin/advances/:id', requireRole('admin'), salaryController.updateAdvance);
 router.put('/admin/advances/:id/pause', requireRole('admin'), salaryController.pauseAdvance);
 router.put('/admin/advances/:id/resume', requireRole('admin'), salaryController.resumeAdvance);
 router.post('/admin/advances/:id/settle', requireRole('admin'), salaryController.settleAdvance);

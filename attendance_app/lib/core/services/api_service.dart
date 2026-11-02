@@ -1236,24 +1236,45 @@ class ApiService {
   Future<Map<String, dynamic>> getMyAdvances() async {
     try {
       final response = await _dio.get('/api/salary/my-advances');
-      final advsList = (response.data['advances'] as List? ?? []);
+      final data = response.data as Map<String, dynamic>;
+      final advsList = (data['advances'] as List? ?? []);
       final advances = advsList.map((a) => SalaryAdvanceModel.fromJson(a)).toList();
-      final activeAdv = response.data['activeAdvance'] != null
-          ? SalaryAdvanceModel.fromJson(response.data['activeAdvance'])
+      final activeAdvsList = (data['activeAdvances'] as List? ?? []);
+      final activeAdvances = activeAdvsList.map((a) => SalaryAdvanceModel.fromJson(a)).toList();
+      final activeAdv = data['activeAdvance'] != null
+          ? SalaryAdvanceModel.fromJson(data['activeAdvance'])
+          : (activeAdvances.isNotEmpty ? activeAdvances.first : null);
+      final nextEmi = data['nextEmi'] != null
+          ? SalaryAdvanceEmiModel.fromJson(data['nextEmi'])
           : null;
-      final nextEmi = response.data['nextEmi'] != null
-          ? SalaryAdvanceEmiModel.fromJson(response.data['nextEmi'])
-          : null;
-      final emisList = (response.data['emis'] as List? ?? []);
+      final emisList = (data['emis'] as List? ?? []);
       final emis = emisList.map((e) => SalaryAdvanceEmiModel.fromJson(e)).toList();
+      final repsList = (data['repayments'] as List? ?? []);
+      final repayments = repsList.map((e) => SalaryAdvanceEmiModel.fromJson(e)).toList();
+
+      double toDbl(dynamic v) {
+        if (v == null) return 0.0;
+        if (v is num) return v.toDouble();
+        return double.tryParse(v.toString()) ?? 0.0;
+      }
+
       return {
         'advances': advances,
+        'activeAdvances': activeAdvances,
         'activeAdvance': activeAdv,
         'nextEmi': nextEmi,
         'emis': emis,
+        'repayments': repayments,
+        'totalOriginalAdvance': toDbl(data['totalOriginalAdvance']),
+        'totalAmountRepaid': toDbl(data['totalAmountRepaid']),
+        'totalRemainingBalance': toDbl(data['totalRemainingBalance']),
+        'totalMonthlyEmi': toDbl(data['totalMonthlyEmi']),
+        'emisPaidCount': data['emisPaidCount'] is int ? data['emisPaidCount'] : int.tryParse(data['emisPaidCount']?.toString() ?? '0') ?? repayments.length,
+        'emisRemainingCount': data['emisRemainingCount'] is int ? data['emisRemainingCount'] : int.tryParse(data['emisRemainingCount']?.toString() ?? '0') ?? 0,
+        'repaymentStatus': data['repaymentStatus']?.toString() ?? (activeAdv?.status ?? 'none'),
       };
     } on DioException catch (e) {
-      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch my advances');
+      throw Exception(formatDioError(e));
     }
   }
 

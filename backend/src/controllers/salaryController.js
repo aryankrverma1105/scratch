@@ -859,6 +859,23 @@ async function resumeAdvance(req, res) {
   }
 }
 
+async function updateAdvance(req, res) {
+  try {
+    const advanceId = parseInt(req.params.id, 10);
+    const { monthlyInstallmentAmount, totalInstallments, notes } = req.body;
+    const result = await salaryService.updateSalaryAdvance({
+      advanceId,
+      monthlyInstallmentAmount,
+      totalInstallments,
+      notes,
+      adminId: req.user.id,
+    });
+    return res.json({ message: 'Salary advance updated successfully', ...result });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+}
+
 async function settleAdvance(req, res) {
   try {
     const advanceId = parseInt(req.params.id, 10);
@@ -918,6 +935,7 @@ module.exports = {
   getAdvanceDetails,
   pauseAdvance,
   resumeAdvance,
+  updateAdvance,
   settleAdvance,
   getMyAdvances,
   getMyPayrollHistory,

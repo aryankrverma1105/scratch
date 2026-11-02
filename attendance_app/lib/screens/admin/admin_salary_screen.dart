@@ -1275,15 +1275,53 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
                           Text('₹${NumberFormat('#,##,##0').format(c.totalDeductions)}', style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
                         ],
                       ),
+                      if (c.advanceDeduction > 0)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Advance EMI', style: TextStyle(color: Colors.orangeAccent, fontSize: 11)),
+                            Text('-₹${NumberFormat('#,##,##0').format(c.advanceDeduction)}', style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Text('Net Salary', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                          const Text('Final Payable', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
                           Text('₹${NumberFormat('#,##,##0').format(c.netSalary)}', style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 16)),
                         ],
                       ),
                     ],
                   ),
+                  if (c.totalActiveAdvances > 0) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.withOpacity(0.25)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.account_balance_wallet, size: 13, color: Colors.orangeAccent),
+                              const SizedBox(width: 5),
+                              Text(
+                                '${c.totalActiveAdvances} Advance(s) • Bal: ₹${NumberFormat('#,##,##0').format(c.totalAdvanceBalance)}',
+                                style: const TextStyle(color: Colors.orangeAccent, fontSize: 11, fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            'EMI: ₹${NumberFormat('#,##,##0').format(c.totalMonthlyEmi)}/mo (${c.remainingEmisCount} rem)',
+                            style: const TextStyle(color: Colors.white70, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   if (c.amountDisbursed > 0 || c.remainingPayable > 0) ...[
                     const SizedBox(height: 8),
                     Row(
@@ -1347,8 +1385,68 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
             ] else ...[
               _buildDetailRow('Company 5% Deduction', '- ₹${NumberFormat('#,##,##0.00').format(c.gratuityDeduction)}', color: AppColors.error),
             ],
+            if (c.advanceDeduction > 0) ...[
+              const Divider(color: Colors.white12, height: 16),
+              _buildDetailRow('Advance EMI Deduction', '- ₹${NumberFormat('#,##,##0.00').format(c.advanceDeduction)}', isBold: true, color: Colors.orangeAccent),
+            ],
             const Divider(color: Colors.white24, height: 20),
-            _buildDetailRow('Net Payable Salary', '₹${NumberFormat('#,##,##0.00').format(c.netSalary)}', isBold: true, color: AppColors.success),
+            _buildDetailRow('Final Payable Salary', '₹${NumberFormat('#,##,##0.00').format(c.netSalary)}', isBold: true, color: AppColors.success),
+            if (c.totalActiveAdvances > 0 || c.advanceDeduction > 0) ...[
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.account_balance_wallet, color: Colors.orangeAccent, size: 16),
+                            SizedBox(width: 6),
+                            Text('Advance & EMI Details', style: TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                          ],
+                        ),
+                        Text('${c.totalActiveAdvances} active plan(s)', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _buildDetailRow('Outstanding Advance Balance', '₹${NumberFormat('#,##,##0').format(c.totalAdvanceBalance)}'),
+                    _buildDetailRow('Scheduled Monthly EMI', '₹${NumberFormat('#,##,##0').format(c.totalMonthlyEmi)}/mo'),
+                    _buildDetailRow('Deducted in Current Cycle', '₹${NumberFormat('#,##,##0.00').format(c.advanceDeduction)}', color: Colors.orangeAccent, isBold: true),
+                    _buildDetailRow('Remaining Installments', '${c.remainingEmisCount} remaining'),
+                    if (c.advanceEmiBreakdown.isNotEmpty) ...[
+                      const Divider(color: Colors.white12, height: 14),
+                      const Text('Deduction Breakdown by Advance:', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 4),
+                      ...c.advanceEmiBreakdown.map((item) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('${item.purpose ?? 'Advance'} (Inst #${item.installmentNumber})', style: const TextStyle(color: Colors.white60, fontSize: 11)),
+                            Text(
+                              '₹${NumberFormat('#,##,##0').format(item.deductedAmount)} (${item.status.replaceAll('_', ' ').toUpperCase()})',
+                              style: TextStyle(
+                                color: item.status == 'deducted' ? AppColors.success : Colors.orangeAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             const Divider(color: Colors.white12, height: 16),
             _buildDetailRow('Payment Status', c.paymentStatus.replaceAll('_', ' ').toUpperCase(), color: c.paymentStatus == 'paid' ? AppColors.success : (c.paymentStatus == 'partially_paid' ? Colors.orange : Colors.white70)),
             _buildDetailRow('Amount Disbursed', '₹${NumberFormat('#,##,##0.00').format(c.amountDisbursed)}'),
@@ -2506,6 +2604,8 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
       final details = await ApiService().getSalaryAdvanceDetails(advanceId);
       final SalaryAdvanceModel adv = details['advance'];
       final List<SalaryAdvanceEmiModel> emis = details['emis'];
+      final double repaid = (details['repaidAmount'] as num?)?.toDouble() ?? adv.totalRecovered;
+      final double remaining = (details['remainingBalance'] as num?)?.toDouble() ?? adv.remainingBalance;
 
       if (!mounted) return;
       showDialog(
@@ -2513,46 +2613,134 @@ class _AdminSalaryScreenState extends State<AdminSalaryScreen> with SingleTicker
         builder: (ctx) => AlertDialog(
           backgroundColor: AppColors.cardDark,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Text(
-            'EMI Schedule - ' + (adv.fullName ?? 'Employee'),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'EMI Schedule & History - ${adv.fullName ?? 'Employee'}',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: (adv.status == 'active' ? AppColors.success : (adv.status == 'completed' ? AppColors.info : Colors.amber)).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  adv.status.toUpperCase(),
+                  style: TextStyle(
+                    color: adv.status == 'active' ? AppColors.success : (adv.status == 'completed' ? AppColors.info : Colors.amber),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
           ),
           content: SizedBox(
             width: double.maxFinite,
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: emis.length,
-              separatorBuilder: (_, __) => const Divider(color: Colors.white10),
-              itemBuilder: (ctx, idx) {
-                final e = emis[idx];
-                Color color = e.status == 'deducted'
-                    ? AppColors.success
-                    : (e.status == 'paused' ? Colors.amber : (e.status == 'settled_early' ? Colors.blue : Colors.white70));
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Installment #' + e.installmentNumber.toString() + ' (' + e.dueMonth + ')', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                          Text('Scheduled: ₹' + NumberFormat('#,##,##0').format(e.scheduledAmount), style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
-                        ],
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Advance', style: TextStyle(color: AppColors.textDim, fontSize: 10)),
+                            Text('₹${NumberFormat('#,##,##0').format(adv.amount)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                          ],
                         ),
-                        child: Text(e.status.toUpperCase(), style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Recovered', style: TextStyle(color: AppColors.textDim, fontSize: 10)),
+                            Text('₹${NumberFormat('#,##,##0').format(repaid)}', style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold, fontSize: 13)),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            const Text('Remaining', style: TextStyle(color: AppColors.textDim, fontSize: 10)),
+                            Text('₹${NumberFormat('#,##,##0').format(remaining)}', style: const TextStyle(color: Colors.orangeAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                );
-              },
+                  const SizedBox(height: 14),
+                  const Text('Deduction Schedule by Salary Cycle', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: emis.length,
+                    separatorBuilder: (_, __) => const Divider(color: Colors.white10),
+                    itemBuilder: (ctx, idx) {
+                      final e = emis[idx];
+                      Color color = e.status == 'deducted'
+                          ? AppColors.success
+                          : (e.status == 'paused'
+                              ? Colors.amber
+                              : (e.status == 'settled_early'
+                                  ? Colors.blue
+                                  : (e.status == 'insufficient_salary' ? Colors.orangeAccent : Colors.white70)));
+
+                      final isDeducted = e.status == 'deducted' || e.status == 'settled_early' || e.deductedAmount > 0;
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Installment #${e.installmentNumber} (${e.dueMonth})', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5)),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: color.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(e.status.replaceAll('_', ' ').toUpperCase(), style: TextStyle(color: color, fontSize: 9.5, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Scheduled: ₹${NumberFormat('#,##,##0').format(e.scheduledAmount)}' + (isDeducted ? ' • Deducted: ₹${NumberFormat('#,##,##0').format(e.deductedAmount)}' : ''),
+                                  style: TextStyle(color: isDeducted ? AppColors.success : AppColors.textMuted, fontSize: 11),
+                                ),
+                                if (e.dueCycleCode != null)
+                                  Text('Cycle: ${e.dueCycleCode}', style: const TextStyle(color: Colors.cyanAccent, fontSize: 10.5)),
+                              ],
+                            ),
+                            if (e.repaymentReference != null) ...[
+                              const SizedBox(height: 2),
+                              Text('Ref: ${e.repaymentReference}', style: const TextStyle(color: Colors.white38, fontSize: 9.5)),
+                            ],
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [

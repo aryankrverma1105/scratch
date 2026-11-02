@@ -25,12 +25,21 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
   List<SalaryCalculationModel> _history = [];
   SalaryAdvanceModel? _activeAdvance;
   SalaryAdvanceEmiModel? _nextEmi;
+  List<SalaryAdvanceModel> _allAdvances = [];
   List<SalaryAdvanceEmiModel> _advanceEmis = [];
+  List<SalaryAdvanceEmiModel> _repayments = [];
+  double _totalOriginalAdvance = 0.0;
+  double _totalAmountRepaid = 0.0;
+  double _totalRemainingBalance = 0.0;
+  double _totalMonthlyEmi = 0.0;
+  int _emisPaidCount = 0;
+  int _emisRemainingCount = 0;
+  String _repaymentStatus = 'none';
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _loadAllSalaryData();
   }
 
@@ -68,9 +77,18 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
           _overtimes = otRes;
           _overtimeTotalAmount = otRes.fold<double>(0.0, (sum, o) => sum + (o.status == 'approved' ? o.amount : 0.0));
           _history = hist;
+          _allAdvances = (advData['advances'] as List? ?? []).cast<SalaryAdvanceModel>();
           _activeAdvance = advData['activeAdvance'];
           _nextEmi = advData['nextEmi'];
           _advanceEmis = (advData['emis'] as List? ?? []).cast<SalaryAdvanceEmiModel>();
+          _repayments = (advData['repayments'] as List? ?? []).cast<SalaryAdvanceEmiModel>();
+          _totalOriginalAdvance = (advData['totalOriginalAdvance'] as num?)?.toDouble() ?? 0.0;
+          _totalAmountRepaid = (advData['totalAmountRepaid'] as num?)?.toDouble() ?? 0.0;
+          _totalRemainingBalance = (advData['totalRemainingBalance'] as num?)?.toDouble() ?? 0.0;
+          _totalMonthlyEmi = (advData['totalMonthlyEmi'] as num?)?.toDouble() ?? 0.0;
+          _emisPaidCount = (advData['emisPaidCount'] as num?)?.toInt() ?? 0;
+          _emisRemainingCount = (advData['emisRemainingCount'] as num?)?.toInt() ?? 0;
+          _repaymentStatus = advData['repaymentStatus']?.toString() ?? 'none';
           _isLoading = false;
         });
       }
@@ -230,6 +248,7 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
             indicatorSize: TabBarIndicatorSize.tab,
             tabs: const [
               Tab(text: 'Summary'),
+              Tab(text: 'Advance & EMI'),
               Tab(text: 'Incentives'),
               Tab(text: 'Overtime'),
               Tab(text: 'History'),
@@ -241,6 +260,7 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
             controller: _tabController,
             children: [
               _buildSummaryTab(),
+              _buildAdvanceEmiTab(),
               _buildIncentivesTab(),
               _buildOvertimeTab(),
               _buildHistoryTab(),
@@ -622,6 +642,325 @@ class _EmployeeSalaryScreenState extends State<EmployeeSalaryScreen> with Single
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildAdvanceEmiTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Advance & EMI Portfolio Summary Card
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.orange.withOpacity(0.18), AppColors.cardDark],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.orange.withOpacity(0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.account_balance_wallet_outlined, color: Colors.orangeAccent, size: 22),
+                      SizedBox(width: 8),
+                      Text(
+                        'Salary Advance & EMI Plan',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: (_repaymentStatus == 'active'
+                              ? AppColors.success
+                              : _repaymentStatus == 'completed'
+                                  ? AppColors.info
+                                  : _repaymentStatus == 'paused'
+                                      ? Colors.amber
+                                      : Colors.grey)
+                          .withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      _repaymentStatus.toUpperCase(),
+                      style: TextStyle(
+                        color: _repaymentStatus == 'active'
+                            ? AppColors.success
+                            : _repaymentStatus == 'completed'
+                                ? AppColors.info
+                                : _repaymentStatus == 'paused'
+                                    ? Colors.amber
+                                    : Colors.grey,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Original Advance', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                      Text(
+                        '₹${NumberFormat('#,##,##0').format(_totalOriginalAdvance)}',
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Total Repaid', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                      Text(
+                        '₹${NumberFormat('#,##,##0').format(_totalAmountRepaid)}',
+                        style: const TextStyle(color: AppColors.success, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Text('Remaining Balance', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                      Text(
+                        '₹${NumberFormat('#,##,##0').format(_totalRemainingBalance)}',
+                        style: const TextStyle(color: Colors.orangeAccent, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const Divider(color: Colors.white12, height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Monthly EMI', style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+                      Text(
+                        '₹${NumberFormat('#,##,##0').format(_totalMonthlyEmi)}/mo',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Text('EMIs Progress', style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+                      Text(
+                        '$_emisPaidCount paid • $_emisRemainingCount remaining',
+                        style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      const Text('Next EMI Deduction', style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+                      Text(
+                        _nextEmi != null ? _nextEmi!.dueMonth : (_totalRemainingBalance == 0 ? 'Fully Paid' : 'N/A'),
+                        style: const TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Monthly Salary Breakdown Summary
+        if (_salary != null) ...[
+          const Text('Current Month Salary Breakdown', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.cardDark,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              children: [
+                _buildRow('Gross Earned Salary', '₹${NumberFormat('#,##,##0.00').format(_salary!.grossSalary)}', isBold: true),
+                const Divider(color: Colors.white12, height: 16),
+                _buildRow('Other Applicable Deductions', '- ₹${NumberFormat('#,##,##0.00').format(_salary!.totalDeductions)}', color: AppColors.error),
+                const Divider(color: Colors.white12, height: 16),
+                _buildRow('Salary Advance EMI Deduction', '- ₹${NumberFormat('#,##,##0.00').format(_salary!.advanceDeduction)}', color: Colors.orangeAccent, isBold: true),
+                const Divider(color: Colors.white24, height: 20),
+                _buildRow('Net Payable Salary', '₹${NumberFormat('#,##,##0.00').format(_salary!.netSalary)}', color: AppColors.success, isBold: true),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+
+        // Complete EMI Repayment History Section
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Complete EMI Repayment History',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+            Text(
+              '${_advanceEmis.length} Installment(s)',
+              style: const TextStyle(color: AppColors.textDim, fontSize: 12),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_advanceEmis.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(32),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.cardDark,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Column(
+              children: [
+                Icon(Icons.check_circle_outline, color: Colors.white24, size: 44),
+                SizedBox(height: 10),
+                Text('No salary advance or EMI records found', style: TextStyle(color: AppColors.textDim, fontSize: 14)),
+              ],
+            ),
+          )
+        else
+          ..._advanceEmis.map((e) {
+            Color statusColor;
+            switch (e.status) {
+              case 'deducted':
+                statusColor = AppColors.success;
+                break;
+              case 'settled_early':
+                statusColor = Colors.lightBlueAccent;
+                break;
+              case 'paused':
+                statusColor = Colors.amber;
+                break;
+              case 'insufficient_salary':
+                statusColor = Colors.orangeAccent;
+                break;
+              case 'partial_deducted':
+                statusColor = Colors.orange;
+                break;
+              default:
+                statusColor = Colors.white60;
+            }
+
+            final isDeducted = e.status == 'deducted' || e.status == 'settled_early' || e.deductedAmount > 0;
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.cardDark,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: isDeducted ? AppColors.success.withOpacity(0.3) : Colors.white12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            isDeducted ? Icons.check_circle : Icons.schedule,
+                            color: statusColor,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Installment #${e.installmentNumber} • Due ${e.dueMonth}',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13.5),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          e.status.replaceAll('_', ' ').toUpperCase(),
+                          style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Scheduled', style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+                          Text(
+                            '₹${NumberFormat('#,##,##0').format(e.scheduledAmount)}',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Actually Deducted', style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+                          Text(
+                            '₹${NumberFormat('#,##,##0').format(e.deductedAmount)}',
+                            style: TextStyle(color: isDeducted ? AppColors.success : Colors.white60, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text('Salary Cycle', style: TextStyle(color: AppColors.textDim, fontSize: 11)),
+                          Text(
+                            e.dueCycleCode ?? e.dueMonth,
+                            style: const TextStyle(color: Colors.cyanAccent, fontSize: 11.5, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  if (e.deductedAt != null || e.repaymentReference != null) ...[
+                    const Divider(color: Colors.white10, height: 16),
+                    if (e.deductedAt != null)
+                      Text(
+                        'Deducted on: ${e.deductedAt!.length >= 19 ? e.deductedAt!.substring(0, 19).replaceAll('T', ' ') : e.deductedAt!} IST',
+                        style: const TextStyle(color: AppColors.textDim, fontSize: 11),
+                      ),
+                    if (e.repaymentReference != null)
+                      Text(
+                        'Ref: ${e.repaymentReference}',
+                        style: const TextStyle(color: Colors.white54, fontSize: 10.5),
+                      ),
+                  ],
+                ],
+              ),
+            );
+          }),
+      ],
     );
   }
 

@@ -693,36 +693,140 @@ async function calculateSalaryForEmployee(userId, periodOrMonth) {
     [userId, attendanceMetrics.periodCode, attendanceMetrics.periodCode]
   );
 
-  // --- Advance & EMI Deduction (Requirement 3) ---
+  // --- Advance & EMI Deduction (Comprehensive Multi-Advance Integration) ---
   let advanceDeduction = 0;
   let pendingAdvanceEmi = null;
+  let advanceEmiBreakdown = [];
   const periodMonthStr = attendanceMetrics.startDate.substring(0, 7);
+  const earnedPayableBeforeEmi = round2(Math.max(0, grossSalary - totalDeductions));
 
-  const activeEmi = await db.get(
-    `SELECT e.*, a.status as adv_status, a.remaining_balance
-     FROM salary_advance_emis e
-     JOIN salary_advances a ON e.advance_id = a.id
-     WHERE e.user_id = ? AND e.due_month = ? AND e.status IN ('pending', 'insufficient_salary') AND a.status = 'active'
-     ORDER BY e.installment_number ASC LIMIT 1`,
-    [userId, periodMonthStr]
-  );
+  // If this cycle is already finalized or disbursed, retrieve the immutable saved EMI deduction and linked records
+  if (cycleRecord && (cycleRecord.status === 'finalized' || ['paid', 'partially_paid'].includes(cycleRecord.payment_status))) {
+    advanceDeduction = round2(cycleRecord.advance_deduction || 0);
+    netSalary = round2(cycleRecord.net_salary !== undefined ? cycleRecord.net_salary : Math.max(0, earnedPayableBeforeEmi - advanceDeduction));
 
-  if (activeEmi) {
-    const remainingEmiAmount = round2(activeEmi.scheduled_amount - (activeEmi.deducted_amount || 0));
-    advanceDeduction = round2(Math.min(netSalary, Math.max(0, remainingEmiAmount)));
-    netSalary = round2(Math.max(0, netSalary - advanceDeduction));
-    pendingAdvanceEmi = {
-      id: activeEmi.id,
-      advanceId: activeEmi.advance_id,
-      installmentNumber: activeEmi.installment_number,
-      scheduledAmount: activeEmi.scheduled_amount,
-      deductedAmount: advanceDeduction,
-      status: activeEmi.status,
-    };
-  } else if (cycleRecord && cycleRecord.advance_deduction) {
-    advanceDeduction = round2(cycleRecord.advance_deduction);
-    netSalary = round2(Math.max(0, netSalary - advanceDeduction));
+    const cycleEmis = await db.query(
+      `SELECT e.*, a.amount as original_advance_amount, a.total_recovered, a.remaining_balance,
+              a.monthly_installment_amount, a.purpose, a.total_installments, a.status as advance_status
+       FROM salary_advance_emis e
+       JOIN salary_advances a ON e.advance_id = a.id
+       WHERE e.user_id = ? AND (e.due_cycle_code = ? OR e.payroll_record_id = ?)
+       ORDER BY a.id ASC, e.installment_number ASC`,
+      [userId, attendanceMetrics.periodCode, cycleRecord.id]
+    );
+
+    advanceEmiBreakdown = cycleEmis.map((e) => ({
+      emiId: e.id,
+      advanceId: e.advance_id,
+      purpose: e.purpose || 'Salary Advance',
+      originalAmount: e.original_advance_amount,
+      totalRecovered: e.total_recovered,
+      remainingBalance: e.remaining_balance,
+      monthlyInstallmentAmount: e.monthly_installment_amount,
+      installmentNumber: e.installment_number,
+      totalInstallments: e.total_installments,
+      dueMonth: e.due_month,
+      dueCycleCode: e.due_cycle_code || attendanceMetrics.periodCode,
+      scheduledAmount: round2(e.scheduled_amount),
+      deductedAmount: round2(e.deducted_amount),
+      pendingAmount: round2(Math.max(0, e.scheduled_amount - e.deducted_amount)),
+      status: e.status,
+      deductedAt: e.deducted_at,
+      repaymentReference: e.repayment_reference,
+    }));
+
+    if (advanceEmiBreakdown.length > 0) {
+      pendingAdvanceEmi = {
+        id: advanceEmiBreakdown[0].emiId,
+        advanceId: advanceEmiBreakdown[0].advanceId,
+        installmentNumber: advanceEmiBreakdown[0].installmentNumber,
+        scheduledAmount: advanceEmiBreakdown[0].scheduledAmount,
+        deductedAmount: advanceEmiBreakdown[0].deductedAmount,
+        status: advanceEmiBreakdown[0].status,
+      };
+    }
+  } else {
+    // Draft live preview: calculate applicable EMIs across ALL active advances
+    let availablePayable = earnedPayableBeforeEmi;
+    let totalEmiDeducted = 0;
+
+    const activeAdvances = await db.query(
+      `SELECT * FROM salary_advances
+       WHERE user_id = ? AND status = 'active' AND remaining_balance > 0
+       ORDER BY id ASC`,
+      [userId]
+    );
+
+    for (const adv of activeAdvances) {
+      // Find the earliest unpaid or partially paid EMI installment due on or before this month
+      const dueEmi = await db.get(
+        `SELECT * FROM salary_advance_emis
+         WHERE advance_id = ? AND user_id = ? AND due_month <= ?
+           AND status IN ('pending', 'insufficient_salary', 'partial_deducted')
+         ORDER BY installment_number ASC LIMIT 1`,
+        [adv.id, userId, periodMonthStr]
+      );
+
+      if (dueEmi) {
+        const remainingScheduled = round2(dueEmi.scheduled_amount - (dueEmi.deducted_amount || 0));
+        // Must not exceed advance remaining balance
+        const maxForAdvance = round2(Math.min(remainingScheduled, adv.remaining_balance));
+        // Must not exceed available payable salary (no negative salary)
+        const actualDeduction = round2(Math.min(availablePayable, maxForAdvance));
+
+        availablePayable = round2(Math.max(0, availablePayable - actualDeduction));
+        totalEmiDeducted = round2(totalEmiDeducted + actualDeduction);
+
+        advanceEmiBreakdown.push({
+          emiId: dueEmi.id,
+          advanceId: adv.id,
+          purpose: adv.purpose || 'Salary Advance',
+          originalAmount: adv.amount,
+          totalRecovered: adv.total_recovered,
+          remainingBalance: adv.remaining_balance,
+          monthlyInstallmentAmount: adv.monthly_installment_amount,
+          installmentNumber: dueEmi.installment_number,
+          totalInstallments: adv.total_installments,
+          dueMonth: dueEmi.due_month,
+          dueCycleCode: attendanceMetrics.periodCode,
+          scheduledAmount: dueEmi.scheduled_amount,
+          deductedAmount: actualDeduction,
+          pendingAmount: round2(dueEmi.scheduled_amount - actualDeduction),
+          status: actualDeduction >= dueEmi.scheduled_amount ? 'deducted' : (actualDeduction > 0 ? 'partial_deducted' : 'insufficient_salary'),
+        });
+      }
+    }
+
+    advanceDeduction = totalEmiDeducted;
+    netSalary = round2(Math.max(0, earnedPayableBeforeEmi - advanceDeduction));
+
+    if (advanceEmiBreakdown.length > 0) {
+      pendingAdvanceEmi = {
+        id: advanceEmiBreakdown[0].emiId,
+        advanceId: advanceEmiBreakdown[0].advanceId,
+        installmentNumber: advanceEmiBreakdown[0].installmentNumber,
+        scheduledAmount: advanceEmiBreakdown[0].scheduledAmount,
+        deductedAmount: advanceEmiBreakdown[0].deductedAmount,
+        status: advanceEmiBreakdown[0].status,
+      };
+    }
   }
+
+  // Calculate overall advance portfolio statistics for employee
+  const allUserAdvances = await db.query(
+    `SELECT * FROM salary_advances WHERE user_id = ? ORDER BY id ASC`,
+    [userId]
+  );
+  const activeUserAdvances = allUserAdvances.filter((a) => a.status === 'active' && a.remaining_balance > 0);
+  const totalActiveAdvances = activeUserAdvances.length;
+  const totalAdvanceBalance = round2(activeUserAdvances.reduce((sum, a) => sum + (a.remaining_balance || 0), 0));
+  const totalMonthlyEmi = round2(activeUserAdvances.reduce((sum, a) => sum + (a.monthly_installment_amount || 0), 0));
+  const pendingEmisResult = await db.query(
+    `SELECT COUNT(*) as count FROM salary_advance_emis
+     WHERE user_id = ? AND status IN ('pending', 'insufficient_salary', 'partial_deducted', 'paused')`,
+    [userId]
+  );
+  const remainingEmisCount = pendingEmisResult[0]?.count || 0;
 
   // Check disbursement and payment status if already recorded in DB
   let amountDisbursed = 0;
@@ -755,6 +859,11 @@ async function calculateSalaryForEmployee(userId, periodOrMonth) {
     baseRate,
     advanceDeduction,
     pendingAdvanceEmi,
+    advanceEmiBreakdown,
+    totalActiveAdvances,
+    totalAdvanceBalance,
+    totalMonthlyEmi,
+    remainingEmisCount,
     configuredMonthlyCap: empConfig.salary_type === 'fixed_monthly' ? parseFloat(empConfig.monthly_basic_salary || 0) : null,
     hasConfig,
     totalWorkingDays: attendanceMetrics.totalWorkingDays,
@@ -814,6 +923,126 @@ async function previewPayrollForMonth(monthStr) {
  * Finalize and lock a payroll period or cycle.
  * Saves immutable snapshot of all payroll records in a transaction.
  */
+/**
+ * Safely and idempotently apply EMI deductions for an employee in a transaction.
+ */
+async function applyEmiDeductionsForEmployeeTx(tx, c, targetPeriod, payrollRecordId, adminUserId, nowIso) {
+  if (!c.advanceEmiBreakdown || c.advanceEmiBreakdown.length === 0) return;
+
+  // Check if any EMI was already processed for this cycle
+  const existingCycleEmis = await tx.query(
+    `SELECT id FROM salary_advance_emis
+     WHERE user_id = ? AND (due_cycle_code = ? OR payroll_record_id = ?) AND status IN ('deducted', 'partial_deducted')`,
+    [c.userId, targetPeriod, payrollRecordId]
+  );
+  if (existingCycleEmis && existingCycleEmis.length > 0) {
+    // Already processed for this cycle, do not double-deduct
+    return;
+  }
+
+  for (const item of c.advanceEmiBreakdown) {
+    const repRef = `EMI-REC-${targetPeriod}-U${c.userId}-ADV${item.advanceId}-INS${item.installmentNumber}-${Date.now().toString(36).toUpperCase()}`;
+
+    if (item.deductedAmount > 0) {
+      const newStatus = item.deductedAmount >= item.scheduledAmount ? 'deducted' : 'partial_deducted';
+
+      // 1. Update EMI installment
+      await tx.run(
+        `UPDATE salary_advance_emis
+         SET deducted_amount = round(deducted_amount + ?, 2),
+             status = ?,
+             due_cycle_code = ?,
+             payroll_record_id = ?,
+             deducted_at = ?,
+             repayment_reference = ?,
+             notes = COALESCE(notes || ' | ', '') || ?
+         WHERE id = ?`,
+        [
+          item.deductedAmount,
+          newStatus,
+          targetPeriod,
+          payrollRecordId,
+          nowIso,
+          repRef,
+          `Deducted ₹${item.deductedAmount} in cycle ${targetPeriod}`,
+          item.emiId,
+        ]
+      );
+
+      // 2. Update advance balance
+      await tx.run(
+        `UPDATE salary_advances
+         SET total_recovered = round(total_recovered + ?, 2),
+             remaining_balance = round(max(0, remaining_balance - ?), 2),
+             total_installments_paid = total_installments_paid + 1,
+             status = CASE WHEN (remaining_balance - ?) <= 0.01 THEN 'completed' ELSE status END,
+             updated_at = ?
+         WHERE id = ?`,
+        [
+          item.deductedAmount,
+          item.deductedAmount,
+          item.deductedAmount,
+          nowIso,
+          item.advanceId,
+        ]
+      );
+
+      // 3. Activity / Audit log
+      await logActivity({
+        userId: adminUserId,
+        action: 'SALARY_ADVANCE_EMI_DEDUCTED',
+        module: 'salary',
+        entityType: 'salary_advance_emi',
+        entityId: item.emiId,
+        targetUserId: c.userId,
+        targetUserName: c.fullName,
+        details: `Deducted ₹${item.deductedAmount} EMI (#${item.installmentNumber}) for Advance #${item.advanceId} in cycle ${targetPeriod} (Ref: ${repRef})`,
+      });
+
+      const advCheck = await tx.get('SELECT remaining_balance, status FROM salary_advances WHERE id = ?', [item.advanceId]);
+      if (advCheck && advCheck.status === 'completed') {
+        await logActivity({
+          userId: adminUserId,
+          action: 'SALARY_ADVANCE_COMPLETED',
+          module: 'salary',
+          entityType: 'salary_advance',
+          entityId: item.advanceId,
+          targetUserId: c.userId,
+          targetUserName: c.fullName,
+          details: `Advance #${item.advanceId} for ${c.fullName} has been fully repaid and closed.`,
+        });
+      }
+    } else {
+      // Insufficient payable salary
+      await tx.run(
+        `UPDATE salary_advance_emis
+         SET status = 'insufficient_salary',
+             due_cycle_code = ?,
+             payroll_record_id = ?,
+             notes = COALESCE(notes || ' | ', '') || ?
+         WHERE id = ?`,
+        [
+          targetPeriod,
+          payrollRecordId,
+          `Insufficient salary in cycle ${targetPeriod}`,
+          item.emiId,
+        ]
+      );
+
+      await logActivity({
+        userId: adminUserId,
+        action: 'SALARY_ADVANCE_EMI_SKIPPED',
+        module: 'salary',
+        entityType: 'salary_advance_emi',
+        entityId: item.emiId,
+        targetUserId: c.userId,
+        targetUserName: c.fullName,
+        details: `EMI deduction (#${item.installmentNumber}) for Advance #${item.advanceId} deferred due to insufficient payable salary in cycle ${targetPeriod}`,
+      });
+    }
+  }
+}
+
 async function finalizePayroll(periodOrMonth, adminUserId, notes = '') {
   return await db.withTransaction(async (tx) => {
     const resolved = await resolveCycleOrPeriod(periodOrMonth);
@@ -906,6 +1135,7 @@ async function finalizePayroll(periodOrMonth, adminUserId, notes = '') {
       const existingDisbursed = round2(existing?.amount_disbursed || 0);
       const remPayable = round2(Math.max(0, c.netSalary - existingDisbursed));
       const payStatus = remPayable === 0 ? 'paid' : (existingDisbursed > 0 ? 'partially_paid' : 'finalized');
+      let currentPayrollRecordId = existing?.id;
 
       if (existing) {
         await tx.run(
@@ -951,7 +1181,7 @@ async function finalizePayroll(periodOrMonth, adminUserId, notes = '') {
           ]
         );
       } else {
-        await tx.run(
+        const insRes = await tx.run(
           `INSERT INTO payroll_records (
              payroll_period, cycle_id, cycle_code, user_id, salary_type, base_rate, total_working_days,
              present_days, paid_leave_days, payable_days, absent_days, excess_absent_days,
@@ -994,7 +1224,11 @@ async function finalizePayroll(periodOrMonth, adminUserId, notes = '') {
             nowIso,
           ]
         );
+        currentPayrollRecordId = insRes.lastID;
       }
+
+      // Apply EMI deduction to database
+      await applyEmiDeductionsForEmployeeTx(tx, c, targetPeriod, currentPayrollRecordId, adminUserId, nowIso);
     }
 
     await logActivity({
@@ -1141,6 +1375,7 @@ async function disburseSalaryAndAdvanceCycle({
         [targetCycleCode, targetCycleCode, c.userId]
       );
       const snapshotStr = JSON.stringify(c.attendanceSnapshot);
+      let currentPayrollRecordId = existing?.id;
 
       if (existing) {
         await tx.run(
@@ -1149,7 +1384,7 @@ async function disburseSalaryAndAdvanceCycle({
                present_days = ?, paid_leave_days = ?, payable_days = ?, absent_days = ?, excess_absent_days = ?,
                basic_salary = ?, incentive_salary = ?, overtime_hours = ?, overtime_amount = ?,
                gross_salary = ?, employee_epf = ?, employee_esic = ?, total_employee_deductions = ?,
-               gratuity_deduction = ?, net_salary = ?, employer_epf = ?, employer_esic = ?,
+               gratuity_deduction = ?, advance_deduction = ?, net_salary = ?, employer_epf = ?, employer_esic = ?,
                ctc = ?, status = 'finalized', amount_disbursed = ?, remaining_payable = ?,
                payment_status = ?, payment_date = ?, disbursement_reference = ?,
                attendance_snapshot = ?, updated_at = ?
@@ -1174,6 +1409,7 @@ async function disburseSalaryAndAdvanceCycle({
             c.employeeEsic,
             c.totalDeductions,
             c.gratuityDeduction,
+            c.advanceDeduction || 0,
             c.netSalary,
             c.employerEpf,
             c.employerEsic,
@@ -1189,16 +1425,16 @@ async function disburseSalaryAndAdvanceCycle({
           ]
         );
       } else {
-        await tx.run(
+        const insRes = await tx.run(
           `INSERT INTO payroll_records (
              payroll_period, cycle_id, cycle_code, user_id, salary_type, base_rate,
              total_working_days, present_days, paid_leave_days, payable_days, absent_days,
              excess_absent_days, basic_salary, incentive_salary, overtime_hours, overtime_amount,
              gross_salary, employee_epf, employee_esic, total_employee_deductions, gratuity_deduction,
-             net_salary, employer_epf, employer_esic, ctc, status, amount_disbursed,
+             advance_deduction, net_salary, employer_epf, employer_esic, ctc, status, amount_disbursed,
              remaining_payable, payment_status, payment_date, disbursement_reference,
              attendance_snapshot, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'finalized', ?, ?, ?, ?, ?, ?, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'finalized', ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             targetCycleCode,
             cycle.id,
@@ -1221,6 +1457,7 @@ async function disburseSalaryAndAdvanceCycle({
             c.employeeEsic,
             c.totalDeductions,
             c.gratuityDeduction,
+            c.advanceDeduction || 0,
             c.netSalary,
             c.employerEpf,
             c.employerEsic,
@@ -1235,7 +1472,11 @@ async function disburseSalaryAndAdvanceCycle({
             nowIso,
           ]
         );
+        currentPayrollRecordId = insRes.lastID;
       }
+
+      // Apply EMI deduction atomically
+      await applyEmiDeductionsForEmployeeTx(tx, c, targetCycleCode, currentPayrollRecordId, adminUserId, nowIso);
     }
 
     // 5. Update Current Cycle
@@ -1615,9 +1856,21 @@ async function getSalaryAdvanceDetails(advanceId) {
     [advanceId]
   );
 
+  const repayments = emis.filter((e) => ['deducted', 'settled_early'].includes(e.status) || (e.deducted_amount && e.deducted_amount > 0));
+  const remainingEmis = emis.filter((e) => ['pending', 'insufficient_salary', 'paused'].includes(e.status));
+  const nextScheduledEmi = remainingEmis.length > 0 ? remainingEmis[0] : null;
+
   return {
     advance,
     emis,
+    repayments,
+    repaidAmount: round2(advance.total_recovered),
+    remainingBalance: round2(advance.remaining_balance),
+    monthlyInstallment: round2(advance.monthly_installment_amount),
+    totalInstallments: advance.total_installments,
+    emisPaidCount: repayments.length,
+    emisRemainingCount: remainingEmis.length,
+    nextEmi: nextScheduledEmi,
   };
 }
 
@@ -1740,12 +1993,76 @@ async function settleSalaryAdvanceEarly({ advanceId, settlementAmount, paymentMe
 /**
  * Get employee advances overview
  */
+async function updateSalaryAdvance({ advanceId, monthlyInstallmentAmount, totalInstallments, notes, adminId }) {
+  const adv = await db.get('SELECT * FROM salary_advances WHERE id = ?', [advanceId]);
+  if (!adv) throw new Error('Salary advance not found');
+  if (['completed', 'cancelled'].includes(adv.status)) {
+    throw new Error(`Cannot modify advance with status ${adv.status}`);
+  }
+
+  const nowIso = new Date().toISOString();
+  await db.withTransaction(async (tx) => {
+    const newInstallment = monthlyInstallmentAmount !== undefined ? round2(parseFloat(monthlyInstallmentAmount)) : adv.monthly_installment_amount;
+    const newTotalInstallments = totalInstallments !== undefined ? parseInt(totalInstallments, 10) : adv.total_installments;
+
+    if (newInstallment <= 0) throw new Error('Monthly installment must be greater than 0');
+    if (newTotalInstallments <= 0) throw new Error('Total installments must be greater than 0');
+
+    await tx.run(
+      `UPDATE salary_advances
+       SET monthly_installment_amount = ?, total_installments = ?, notes = COALESCE(?, notes), updated_at = ?
+       WHERE id = ?`,
+      [newInstallment, newTotalInstallments, notes || null, nowIso, advanceId]
+    );
+
+    // Re-balance future pending EMIs
+    const pendingEmis = await tx.query(
+      `SELECT * FROM salary_advance_emis
+       WHERE advance_id = ? AND status IN ('pending', 'insufficient_salary', 'paused')
+       ORDER BY installment_number ASC`,
+      [advanceId]
+    );
+
+    let remBalance = adv.remaining_balance;
+    for (let i = 0; i < pendingEmis.length; i++) {
+      const emi = pendingEmis[i];
+      const isLast = (i === pendingEmis.length - 1);
+      const scheduled = isLast ? round2(remBalance) : round2(Math.min(newInstallment, remBalance));
+      remBalance = round2(Math.max(0, remBalance - scheduled));
+
+      await tx.run(
+        `UPDATE salary_advance_emis
+         SET scheduled_amount = ?
+         WHERE id = ?`,
+        [scheduled, emi.id]
+      );
+    }
+  });
+
+  await logActivity({
+    userId: adminId,
+    action: 'SALARY_ADVANCE_UPDATED',
+    module: 'salary',
+    entityType: 'salary_advance',
+    entityId: advanceId,
+    targetUserId: adv.user_id,
+    details: `Updated salary advance ID #${advanceId} (Monthly EMI: ₹${monthlyInstallmentAmount || adv.monthly_installment_amount})`,
+  });
+
+  return getSalaryAdvanceDetails(advanceId);
+}
+
+/**
+ * Get employee advances overview with complete repayment history and stats
+ */
 async function getEmployeeAdvances(userId) {
   const advances = await db.query(
     'SELECT * FROM salary_advances WHERE user_id = ? ORDER BY created_at DESC',
     [userId]
   );
-  const activeAdvance = advances.find((a) => a.status === 'active');
+  const activeAdvances = advances.filter((a) => a.status === 'active' && a.remaining_balance > 0);
+  const activeAdvance = activeAdvances[0] || null;
+
   let nextEmi = null;
   if (activeAdvance) {
     nextEmi = await db.get(
@@ -1757,15 +2074,37 @@ async function getEmployeeAdvances(userId) {
   }
 
   const allEmis = await db.query(
-    'SELECT * FROM salary_advance_emis WHERE user_id = ? ORDER BY installment_number ASC',
+    `SELECT e.*, a.purpose, a.amount as advance_amount, a.total_installments
+     FROM salary_advance_emis e
+     JOIN salary_advances a ON e.advance_id = a.id
+     WHERE e.user_id = ?
+     ORDER BY e.due_month ASC, e.installment_number ASC`,
     [userId]
   );
 
+  const repayments = allEmis.filter((e) => ['deducted', 'settled_early'].includes(e.status) || (e.deducted_amount && e.deducted_amount > 0));
+
+  const totalOriginalAdvance = round2(advances.reduce((sum, a) => sum + (a.amount || 0), 0));
+  const totalAmountRepaid = round2(advances.reduce((sum, a) => sum + (a.total_recovered || 0), 0));
+  const totalRemainingBalance = round2(activeAdvances.reduce((sum, a) => sum + (a.remaining_balance || 0), 0));
+  const totalMonthlyEmi = round2(activeAdvances.reduce((sum, a) => sum + (a.monthly_installment_amount || 0), 0));
+  const emisPaidCount = repayments.length;
+  const emisRemainingCount = allEmis.filter((e) => ['pending', 'insufficient_salary', 'paused'].includes(e.status)).length;
+
   return {
     advances,
+    activeAdvances,
     activeAdvance: activeAdvance || null,
     nextEmi: nextEmi || null,
     emis: allEmis,
+    repayments,
+    totalOriginalAdvance,
+    totalAmountRepaid,
+    totalRemainingBalance,
+    totalMonthlyEmi,
+    emisPaidCount,
+    emisRemainingCount,
+    repaymentStatus: activeAdvance ? activeAdvance.status : (advances.length > 0 ? advances[0].status : 'none'),
   };
 }
 
@@ -1777,6 +2116,7 @@ module.exports = {
   pauseSalaryAdvance,
   resumeSalaryAdvance,
   settleSalaryAdvanceEarly,
+  updateSalaryAdvance,
   getEmployeeAdvances,
   round2,
   getDatesInMonth,

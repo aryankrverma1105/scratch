@@ -417,10 +417,17 @@ class SalaryCalculationModel {
   final String? paymentDate;
   final String? disbursementReference;
   final bool isFinalized;
+  final int totalActiveAdvances;
+  final double totalAdvanceBalance;
+  final double totalMonthlyEmi;
+  final int remainingEmisCount;
+  final List<SalaryAdvanceEmiModel> advanceEmiBreakdown;
 
   String get cycleStartDate => startDate;
   String get cycleEndDate => endDate;
   double? get monthlySalaryCap => configuredMonthlyCap;
+  double get otherDeductions => totalDeductions;
+  double get finalPayableSalary => netSalary;
 
   SalaryCalculationModel({
     required this.userId,
@@ -462,6 +469,11 @@ class SalaryCalculationModel {
     this.paymentDate,
     this.disbursementReference,
     this.isFinalized = false,
+    this.totalActiveAdvances = 0,
+    this.totalAdvanceBalance = 0.0,
+    this.totalMonthlyEmi = 0.0,
+    this.remainingEmisCount = 0,
+    this.advanceEmiBreakdown = const [],
   });
 
   factory SalaryCalculationModel.fromJson(Map<String, dynamic> json) {
@@ -523,6 +535,17 @@ class SalaryCalculationModel {
       paymentDate: json['paymentDate']?.toString() ?? json['payment_date']?.toString(),
       disbursementReference: json['disbursementReference']?.toString() ?? json['disbursement_reference']?.toString(),
       isFinalized: json['status'] == 'finalized' || json['status'] == 'paid' || json['isFinalized'] == true,
+      totalActiveAdvances: json['totalActiveAdvances'] is int
+          ? json['totalActiveAdvances']
+          : int.tryParse(json['totalActiveAdvances']?.toString() ?? '0') ?? 0,
+      totalAdvanceBalance: toDbl(json['totalAdvanceBalance']),
+      totalMonthlyEmi: toDbl(json['totalMonthlyEmi']),
+      remainingEmisCount: json['remainingEmisCount'] is int
+          ? json['remainingEmisCount']
+          : int.tryParse(json['remainingEmisCount']?.toString() ?? '0') ?? 0,
+      advanceEmiBreakdown: (json['advanceEmiBreakdown'] as List? ?? [])
+          .map((item) => SalaryAdvanceEmiModel.fromJson(item as Map<String, dynamic>))
+          .toList(),
     );
   }
 }
@@ -669,10 +692,13 @@ class SalaryAdvanceEmiModel {
   final int userId;
   final int installmentNumber;
   final String dueMonth; // YYYY-MM
+  final String? dueCycleCode;
+  final String? purpose;
   final double scheduledAmount;
   final double deductedAmount;
   final String status; // 'pending' | 'deducted' | 'paused' | 'insufficient_salary' | 'settled_early'
   final String? deductedAt;
+  final String? repaymentReference;
   final String? notes;
 
   SalaryAdvanceEmiModel({
@@ -681,10 +707,13 @@ class SalaryAdvanceEmiModel {
     required this.userId,
     required this.installmentNumber,
     required this.dueMonth,
+    this.dueCycleCode,
+    this.purpose,
     required this.scheduledAmount,
     this.deductedAmount = 0.0,
     required this.status,
     this.deductedAt,
+    this.repaymentReference,
     this.notes,
   });
 
@@ -705,10 +734,13 @@ class SalaryAdvanceEmiModel {
           ? json['installment_number']
           : int.tryParse((json['installment_number'] ?? json['installmentNumber'])?.toString() ?? '1') ?? 1,
       dueMonth: json['due_month']?.toString() ?? json['dueMonth']?.toString() ?? '',
+      dueCycleCode: json['due_cycle_code']?.toString() ?? json['dueCycleCode']?.toString(),
+      purpose: json['purpose']?.toString(),
       scheduledAmount: toDbl(json['scheduled_amount'] ?? json['scheduledAmount']),
       deductedAmount: toDbl(json['deducted_amount'] ?? json['deductedAmount']),
       status: json['status']?.toString() ?? 'pending',
       deductedAt: json['deducted_at']?.toString() ?? json['deductedAt']?.toString(),
+      repaymentReference: json['repayment_reference']?.toString() ?? json['repaymentReference']?.toString(),
       notes: json['notes']?.toString(),
     );
   }
