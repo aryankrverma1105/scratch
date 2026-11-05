@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:battery_plus/battery_plus.dart';
 import 'api_service.dart';
 
 // Phase 3: Structured GPS acquisition result & exceptions
@@ -9,12 +10,18 @@ class AttendanceGpsResult {
   final bool isLowAccuracy;
   final bool isMocked;
   final String? warningMessage;
+  final String locationSource;
+  final int? batteryPercentage;
+  final String? networkStatus;
 
   AttendanceGpsResult({
     required this.position,
     required this.isLowAccuracy,
     required this.isMocked,
     this.warningMessage,
+    this.locationSource = 'GPS',
+    this.batteryPercentage,
+    this.networkStatus,
   });
 }
 
@@ -149,12 +156,14 @@ class LocationService {
     Position? acquiredPos;
 
     // 3. Try fresh last-known position (< 2 min, accuracy < 50 m)
+    String locationSource = 'GPS';
     try {
       final lastKnown = await Geolocator.getLastKnownPosition();
       if (lastKnown != null) {
         final age = DateTime.now().difference(lastKnown.timestamp);
         if (age.inMinutes < 2 && lastKnown.accuracy > 0 && lastKnown.accuracy <= 50) {
           acquiredPos = lastKnown;
+          locationSource = 'LAST_KNOWN';
         }
       }
     } catch (_) {}
@@ -168,11 +177,13 @@ class LocationService {
             timeLimit: Duration(seconds: 10),
           ),
         );
+        locationSource = 'GPS';
       } on TimeoutException {
         // Timeout occurred: try fallback to any last-known position
         final fallback = await Geolocator.getLastKnownPosition();
         if (fallback != null) {
           acquiredPos = fallback;
+          locationSource = 'LAST_KNOWN';
         } else if (isCheckOut) {
           // Never block check-out on poor fix if any position can be constructed
           throw GpsTimeoutException('GPS signal timed out. Please step near a window or outdoors to complete check-out.');
@@ -183,6 +194,7 @@ class LocationService {
         final fallback = await Geolocator.getLastKnownPosition();
         if (fallback != null) {
           acquiredPos = fallback;
+          locationSource = 'FUSED';
         } else {
           throw GpsTimeoutException('Unable to acquire GPS fix: ${e.toString()}');
         }
@@ -201,11 +213,19 @@ class LocationService {
       warning = 'Low GPS accuracy (${acquiredPos.accuracy.toStringAsFixed(0)}m). Recorded with low-accuracy flag.';
     }
 
+    int? batteryLevel;
+    try {
+      batteryLevel = await Battery().batteryLevel;
+    } catch (_) {}
+
     return AttendanceGpsResult(
       position: acquiredPos,
       isLowAccuracy: isLowAccuracy,
       isMocked: isMocked,
       warningMessage: warning,
+      locationSource: locationSource,
+      batteryPercentage: batteryLevel,
+      networkStatus: 'connected',
     );
   }
 

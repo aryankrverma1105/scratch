@@ -1066,6 +1066,97 @@ function initDatabase() {
         try { await run('CREATE INDEX IF NOT EXISTS idx_emi_cycle ON salary_advance_emis(due_cycle_code)'); } catch (_) {}
       },
     },
+    {
+      version: 12,
+      name: 'multi_office_geofencing_and_attendance_reviews',
+      up: async () => {
+        const pkDef = isPostgres ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
+        const tsDef = isPostgres ? 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' : 'DATETIME DEFAULT CURRENT_TIMESTAMP';
+
+        // 1. offices table
+        await run(`
+          CREATE TABLE IF NOT EXISTS offices (
+            id ${pkDef},
+            office_name VARCHAR(150) NOT NULL,
+            address TEXT,
+            latitude REAL NOT NULL,
+            longitude REAL NOT NULL,
+            radius_meters REAL NOT NULL DEFAULT 100.0,
+            description TEXT,
+            status VARCHAR(20) NOT NULL DEFAULT 'active',
+            assigned_departments TEXT,
+            assigned_user_ids TEXT,
+            created_by INTEGER REFERENCES users(id),
+            created_at ${tsDef},
+            updated_at ${tsDef}
+          )
+        `);
+        try { await run('CREATE INDEX IF NOT EXISTS idx_offices_status ON offices(status)'); } catch (_) {}
+
+        // 2. Add geofence and review columns to attendance table
+        try { await run("ALTER TABLE attendance ADD COLUMN geofence_status VARCHAR(30) DEFAULT 'inside'"); } catch (_) {}
+        try { await run("ALTER TABLE attendance ADD COLUMN review_status VARCHAR(30) DEFAULT 'none'"); } catch (_) {}
+        try { await run("ALTER TABLE attendance ADD COLUMN review_reason TEXT"); } catch (_) {}
+        try { await run("ALTER TABLE attendance ADD COLUMN reviewed_by INTEGER REFERENCES users(id)"); } catch (_) {}
+        try { await run(`ALTER TABLE attendance ADD COLUMN reviewed_at ${tsDef}`); } catch (_) {}
+        try { await run(`ALTER TABLE attendance ADD COLUMN reviewed_at ${tsDef}`); } catch (_) {}
+        try { await run("ALTER TABLE attendance ADD COLUMN office_id INTEGER REFERENCES offices(id)"); } catch (_) {}
+        try { await run("ALTER TABLE attendance ADD COLUMN distance_from_office REAL"); } catch (_) {}
+        try { await run("ALTER TABLE attendance ADD COLUMN location_source VARCHAR(30) DEFAULT 'GPS'"); } catch (_) {}
+        try { await run("ALTER TABLE attendance ADD COLUMN battery_percentage REAL"); } catch (_) {}
+        try { await run("ALTER TABLE attendance ADD COLUMN network_status VARCHAR(50)"); } catch (_) {}
+        try { await run("ALTER TABLE attendance ADD COLUMN outside_reason TEXT"); } catch (_) {}
+        try { await run("CREATE INDEX IF NOT EXISTS idx_attendance_review ON attendance(review_status)"); } catch (_) {}
+        try { await run("CREATE INDEX IF NOT EXISTS idx_attendance_geofence ON attendance(geofence_status)"); } catch (_) {}
+
+        // 3. geofence_attendance_evidence table
+        await run(`
+          CREATE TABLE IF NOT EXISTS geofence_attendance_evidence (
+            id ${pkDef},
+            attendance_id INTEGER NOT NULL REFERENCES attendance(id),
+            employee_id INTEGER NOT NULL REFERENCES users(id),
+            office_id INTEGER REFERENCES offices(id),
+            submitted_latitude REAL NOT NULL,
+            submitted_longitude REAL NOT NULL,
+            distance_from_office REAL,
+            accuracy_meters REAL,
+            location_source VARCHAR(30) DEFAULT 'GPS',
+            geofence_result VARCHAR(30) NOT NULL DEFAULT 'INSIDE',
+            review_status VARCHAR(30) NOT NULL DEFAULT 'none',
+            review_reason TEXT,
+            reviewed_by INTEGER REFERENCES users(id),
+            reviewed_at ${tsDef},
+            outside_reason TEXT,
+            created_at ${tsDef}
+          )
+        `);
+        try { await run('CREATE INDEX IF NOT EXISTS idx_evidence_att ON geofence_attendance_evidence(attendance_id)'); } catch (_) {}
+        try { await run('CREATE INDEX IF NOT EXISTS idx_evidence_emp ON geofence_attendance_evidence(employee_id)'); } catch (_) {}
+        try { await run('CREATE INDEX IF NOT EXISTS idx_evidence_review ON geofence_attendance_evidence(review_status)'); } catch (_) {}
+
+        // 4. attendance_review_history table
+        await run(`
+          CREATE TABLE IF NOT EXISTS attendance_review_history (
+            id ${pkDef},
+            attendance_id INTEGER NOT NULL REFERENCES attendance(id),
+            employee_id INTEGER NOT NULL REFERENCES users(id),
+            admin_id INTEGER NOT NULL REFERENCES users(id),
+            previous_status VARCHAR(30),
+            new_status VARCHAR(30) NOT NULL,
+            reason TEXT,
+            created_at ${tsDef}
+          )
+        `);
+        try { await run('CREATE INDEX IF NOT EXISTS idx_rev_hist_att ON attendance_review_history(attendance_id)'); } catch (_) {}
+
+        // 5. Enhance location_tracks with multi-source metadata
+        try { await run("ALTER TABLE location_tracks ADD COLUMN location_source VARCHAR(30) DEFAULT 'GPS'"); } catch (_) {}
+        try { await run("ALTER TABLE location_tracks ADD COLUMN battery_percentage REAL"); } catch (_) {}
+        try { await run("ALTER TABLE location_tracks ADD COLUMN network_status VARCHAR(50)"); } catch (_) {}
+        try { await run("ALTER TABLE location_tracks ADD COLUMN location_permission_status VARCHAR(50)"); } catch (_) {}
+        try { await run("ALTER TABLE location_tracks ADD COLUMN location_services_enabled INTEGER DEFAULT 1"); } catch (_) {}
+      },
+    },
   ];
 
   for (const m of migrations) {

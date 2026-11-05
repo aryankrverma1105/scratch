@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const path = require('path');
 const config = require('./src/config');
 const { initDatabase } = require('./src/db');
 
@@ -19,7 +20,8 @@ const app = express();
 
 // Security and utility middleware
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false,
 }));
 
 const allowedOrigins = process.env.CORS_ORIGIN
@@ -59,6 +61,17 @@ app.use('/api/leave', leaveRoutes); // Leave Management System
 app.use('/api/salary', salaryRoutes); // Salary Management System
 app.get('/api/admin/audit-logs/export', authenticateToken, requireRole('admin'), auditLogController.exportActivityLogsCsv); // Admin Audit Logs CSV Export
 app.get('/api/admin/audit-logs', authenticateToken, requireRole('admin'), auditLogController.getActivityLogs); // Admin Activity Logs
+
+// Static assets for Admin Web Application
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get(['/admin', '/admin/*'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin', 'index.html'));
+});
+
+app.get('/', (req, res) => {
+  res.redirect('/admin');
+});
 
 // 404 handler
 app.use((req, res) => {

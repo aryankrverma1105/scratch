@@ -20,6 +20,9 @@ class AttendanceRecord {
   final String? employeeName;
   final String? employeeDepartment;
   final String? checkOutType;
+  final String? geofenceStatus;
+  final String? reviewStatus;
+  final String? reviewReason;
 
   AttendanceRecord({
     required this.id,
@@ -43,9 +46,14 @@ class AttendanceRecord {
     this.employeeName,
     this.employeeDepartment,
     this.checkOutType,
+    this.geofenceStatus,
+    this.reviewStatus,
+    this.reviewReason,
   });
 
   bool get isCurrentlyCheckedIn => status == 'checked_in';
+  bool get isPendingReview => reviewStatus == 'pending_review';
+  bool get isReviewRejected => reviewStatus == 'rejected';
 
   Duration? get duration {
     if (checkOutTime != null) {
@@ -79,6 +87,9 @@ class AttendanceRecord {
       employeeName: json['full_name'],
       employeeDepartment: json['department'],
       checkOutType: json['check_out_type'],
+      geofenceStatus: json['geofence_status'],
+      reviewStatus: json['review_status'],
+      reviewReason: json['review_reason'],
     );
   }
 }

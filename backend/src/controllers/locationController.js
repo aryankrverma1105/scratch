@@ -24,10 +24,17 @@ async function recordLocation(req, res) {
           } catch (_) {
             continue; // Skip invalid or future timestamps
           }
+          const locSource = loc.location_source || 'GPS';
+          const battVal = loc.battery_percentage !== undefined ? loc.battery_percentage : loc.battery_level;
+          const netStatus = loc.network_status || null;
+          const permStatus = loc.location_permission_status || 'granted';
+          const servEnabled = loc.location_services_enabled !== undefined ? (loc.location_services_enabled ? 1 : 0) : (loc.is_gps_off ? 0 : 1);
+
           await db.run(
             `INSERT INTO location_tracks (
-              user_id, attendance_id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, is_mocked, timestamp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              user_id, attendance_id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, is_mocked,
+              location_source, battery_percentage, network_status, location_permission_status, location_services_enabled, timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               userId,
               activeAttendance ? activeAttendance.id : null,
@@ -36,9 +43,14 @@ async function recordLocation(req, res) {
               loc.accuracy || null,
               loc.speed || null,
               loc.altitude || null,
-              loc.battery_level || null,
-              loc.is_gps_off ? 1 : 0,
+              battVal || null,
+              servEnabled === 0 ? 1 : 0,
               isMock,
+              locSource,
+              battVal || null,
+              netStatus,
+              permStatus,
+              servEnabled,
               safeTs,
             ]
           );
@@ -48,7 +60,22 @@ async function recordLocation(req, res) {
     }
 
     // Single location point
-    const { latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, is_mocked, timestamp } = body;
+    const {
+      latitude,
+      longitude,
+      accuracy,
+      speed,
+      altitude,
+      battery_level,
+      battery_percentage,
+      is_gps_off,
+      is_mocked,
+      timestamp,
+      location_source = 'GPS',
+      network_status = null,
+      location_permission_status = 'granted',
+      location_services_enabled,
+    } = body;
 
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({ error: 'Latitude and longitude are required' });
@@ -62,11 +89,14 @@ async function recordLocation(req, res) {
     }
 
     const isMockSingle = is_mocked === true || is_mocked === 'true' || is_mocked === 1 || is_mocked === '1' ? 1 : 0;
+    const battSingle = battery_percentage !== undefined ? battery_percentage : battery_level;
+    const servEnabledSingle = location_services_enabled !== undefined ? (location_services_enabled ? 1 : 0) : (is_gps_off ? 0 : 1);
 
     await db.run(
       `INSERT INTO location_tracks (
-        user_id, attendance_id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, is_mocked, timestamp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        user_id, attendance_id, latitude, longitude, accuracy, speed, altitude, battery_level, is_gps_off, is_mocked,
+        location_source, battery_percentage, network_status, location_permission_status, location_services_enabled, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         activeAttendance ? activeAttendance.id : null,
@@ -75,9 +105,14 @@ async function recordLocation(req, res) {
         accuracy || null,
         speed || null,
         altitude || null,
-        battery_level || null,
-        is_gps_off ? 1 : 0,
+        battSingle || null,
+        servEnabledSingle === 0 ? 1 : 0,
         isMockSingle,
+        location_source,
+        battSingle || null,
+        network_status,
+        location_permission_status,
+        servEnabledSingle,
         normalizedTs,
       ]
     );

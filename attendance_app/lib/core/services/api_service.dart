@@ -7,6 +7,7 @@ import '../../models/attendance_model.dart';
 import '../../models/location_model.dart';
 import '../../models/leave_models.dart';
 import '../../models/salary_models.dart';
+import '../../models/office_models.dart';
 import 'sync_service.dart';
 
 class ApiService {
@@ -297,6 +298,10 @@ class ApiService {
     bool isMocked = false,
     String? address,
     required File selfieFile,
+    String? locationSource,
+    int? batteryPercentage,
+    String? networkStatus,
+    String? outsideReason,
   }) async {
     try {
       final formMap = <String, dynamic>{
@@ -311,6 +316,18 @@ class ApiService {
       };
       if (accuracy != null) {
         formMap['accuracy'] = accuracy.toString();
+      }
+      if (locationSource != null) {
+        formMap['location_source'] = locationSource;
+      }
+      if (batteryPercentage != null) {
+        formMap['battery_percentage'] = batteryPercentage.toString();
+      }
+      if (networkStatus != null) {
+        formMap['network_status'] = networkStatus;
+      }
+      if (outsideReason != null && outsideReason.isNotEmpty) {
+        formMap['outside_reason'] = outsideReason;
       }
       final formData = FormData.fromMap(formMap);
 
@@ -1346,9 +1363,16 @@ class ApiService {
 
   Future<Map<String, dynamic>> triggerManualBackup({int? destinationId}) async {
     try {
-      final response = await _dio.post('/api/admin/backups/trigger', data: {
-        if (destinationId != null) 'destinationId': destinationId,
-      });
+      final response = await _dio.post(
+        '/api/admin/backups/trigger',
+        data: {
+          if (destinationId != null) 'destinationId': destinationId,
+        },
+        options: Options(
+          sendTimeout: const Duration(seconds: 120),
+          receiveTimeout: const Duration(seconds: 120),
+        ),
+      );
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw Exception(formatDioError(e));
@@ -1440,6 +1464,105 @@ class ApiService {
       return response.data ?? '';
     } on DioException catch (e) {
       throw Exception(e.response?.data?['error'] ?? 'Failed to export activity logs CSV');
+    }
+  }
+
+  // --- Multi-Office Geofencing ---
+
+  Future<List<OfficeModel>> getOffices() async {
+    try {
+      final response = await _dio.get('/api/admin/offices');
+      final list = (response.data['offices'] as List? ?? []);
+      return list.map((o) => OfficeModel.fromJson(o)).toList();
+    } on DioException catch (e) {
+      throw Exception(formatDioError(e));
+    }
+  }
+
+  Future<List<OfficeModel>> getActiveOffices() async {
+    try {
+      final response = await _dio.get('/api/attendance/active-offices');
+      final list = (response.data['offices'] as List? ?? []);
+      return list.map((o) => OfficeModel.fromJson(o)).toList();
+    } on DioException catch (e) {
+      throw Exception(formatDioError(e));
+    }
+  }
+
+  Future<OfficeModel> createOffice(Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.post('/api/admin/offices', data: data);
+      return OfficeModel.fromJson(response.data['office']);
+    } on DioException catch (e) {
+      throw Exception(formatDioError(e));
+    }
+  }
+
+  Future<OfficeModel> updateOffice(int id, Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.put('/api/admin/offices/$id', data: data);
+      return OfficeModel.fromJson(response.data['office']);
+    } on DioException catch (e) {
+      throw Exception(formatDioError(e));
+    }
+  }
+
+  Future<void> deleteOffice(int id) async {
+    try {
+      await _dio.delete('/api/admin/offices/$id');
+    } on DioException catch (e) {
+      throw Exception(formatDioError(e));
+    }
+  }
+
+  // --- Attendance Review System ---
+
+  Future<List<AttendanceReviewModel>> getPendingAttendanceReviews() async {
+    try {
+      final response = await _dio.get('/api/admin/attendance-reviews/pending');
+      final list = (response.data['reviews'] as List? ?? []);
+      return list.map((r) => AttendanceReviewModel.fromJson(r)).toList();
+    } on DioException catch (e) {
+      throw Exception(formatDioError(e));
+    }
+  }
+
+  Future<Map<String, dynamic>> approveAttendanceReview(int attendanceId) async {
+    try {
+      final response = await _dio.post('/api/admin/attendance-reviews/$attendanceId/approve');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(formatDioError(e));
+    }
+  }
+
+  Future<Map<String, dynamic>> rejectAttendanceReview(int attendanceId, String rejectionReason) async {
+    try {
+      final response = await _dio.post('/api/admin/attendance-reviews/$attendanceId/reject', data: {
+        'rejection_reason': rejectionReason,
+      });
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(formatDioError(e));
+    }
+  }
+
+  Future<List<AttendanceReviewModel>> getMyAttendanceReviews() async {
+    try {
+      final response = await _dio.get('/api/attendance/my-reviews');
+      final list = (response.data['reviews'] as List? ?? []);
+      return list.map((r) => AttendanceReviewModel.fromJson(r)).toList();
+    } on DioException catch (e) {
+      throw Exception(formatDioError(e));
+    }
+  }
+
+  Future<Map<String, dynamic>> getDashboardStats() async {
+    try {
+      final response = await _dio.get('/api/admin/dashboard/stats');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw Exception(formatDioError(e));
     }
   }
 }

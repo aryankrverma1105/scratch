@@ -418,7 +418,7 @@ async function getAttendanceMetricsForPeriod(userId, periodOrMonth) {
 
   // Get attendance records for this user strictly in this date range
   const attendanceRows = await db.query(
-    `SELECT date, status FROM attendance
+    `SELECT date, status, review_status FROM attendance
      WHERE user_id = ? AND date >= ? AND date <= ?`,
     [userId, startDate, endDate]
   );
@@ -428,7 +428,9 @@ async function getAttendanceMetricsForPeriod(userId, periodOrMonth) {
         if (isCycle && r.date < officialStartDate) return false;
         if (user.joining_date && r.date < user.joining_date) return false;
         if (user.exit_date && r.date > user.exit_date) return false;
-        return r.status && !['cancelled', 'rejected'].includes(r.status);
+        if (['cancelled', 'rejected'].includes(r.status)) return false;
+        if (r.review_status === 'pending_review' || r.review_status === 'rejected') return false;
+        return true;
       })
       .map((r) => r.date)
   );

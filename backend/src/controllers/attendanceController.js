@@ -1,6 +1,8 @@
 const db = require('../db');
 const fs = require('fs');
 const { getCompanyDate } = require('../utils/timeUtils');
+const { evaluateGeofence } = require('../utils/geofenceUtils');
+const { logActivity } = require('../services/activityLogger');
 
 // Check current attendance state for logged in user
 async function getCurrentStatus(req, res) {
@@ -39,11 +41,21 @@ function cleanupOrphanFile(file) {
   }
 }
 
-// Check-in (Requirements 6, 7, 19)
+// Check-in (Requirements 6, 7, 19, Geofencing, Multi-Office)
 async function checkIn(req, res) {
   try {
     const userId = req.user.id;
-    const { latitude, longitude, address, accuracy, is_mocked } = req.body;
+    const {
+      latitude,
+      longitude,
+      address,
+      accuracy,
+      is_mocked,
+      location_source = 'GPS',
+      battery_percentage = null,
+      network_status = null,
+      outside_reason = null,
+    } = req.body;
 
     if (latitude === undefined || longitude === undefined) {
       cleanupOrphanFile(req.file);
@@ -104,11 +116,42 @@ async function checkIn(req, res) {
     const lngNum = parseFloat(longitude);
     const accNum = accuracy !== undefined && accuracy !== null && accuracy !== '' ? parseFloat(accuracy) : null;
     const isMockedVal = is_mocked === true || is_mocked === 'true' || is_mocked === 1 || is_mocked === '1' ? 1 : 0;
+    const batteryNum = battery_percentage !== undefined && battery_percentage !== null ? parseFloat(battery_percentage) : null;
+    const locSource = ['GPS', 'NETWORK', 'FUSED', 'LAST_KNOWN'].includes(String(location_source).toUpperCase())
+      ? String(location_source).toUpperCase()
+      : 'GPS';
+
+    // 1. Geofence evaluation against active offices
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
+    const activeOffices = await db.query("SELECT * FROM offices WHERE status = 'active' ORDER BY office_name ASC");
+
+    const geofenceResult = evaluateGeofence({
+      latitude: latNum,
+      longitude: lngNum,
+      accuracy: accNum,
+      locationSource: locSource,
+      user,
+      activeOffices,
+    });
+
+    const isInside = geofenceResult.isInside;
+    const nearestOffice = geofenceResult.nearestOffice;
+    const officeId = nearestOffice ? nearestOffice.id : null;
+    const distMeters = geofenceResult.distanceFromNearest;
+
+    // Review status:
+    // If inside: review_status = 'approved' (immediately approved), geofence_status = 'inside'
+    // If outside: review_status = 'pending_review', geofence_status = 'outside'
+    const geofenceStatus = isInside ? 'inside' : 'outside';
+    const reviewStatus = isInside ? 'approved' : 'pending_review';
 
     const result = await db.run(
       `INSERT INTO attendance (
-        user_id, date, check_in_time, check_in_lat, check_in_lng, check_in_accuracy, check_in_is_mocked, check_in_address, check_in_selfie, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_in')`,
+        user_id, date, check_in_time, check_in_lat, check_in_lng, check_in_accuracy,
+        check_in_is_mocked, check_in_address, check_in_selfie, status,
+        geofence_status, review_status, office_id, distance_from_office,
+        location_source, battery_percentage, network_status, outside_reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_in', ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         today,
@@ -119,23 +162,87 @@ async function checkIn(req, res) {
         isMockedVal,
         address || 'Recorded location',
         selfieFilename,
+        geofenceStatus,
+        reviewStatus,
+        officeId,
+        distMeters,
+        locSource,
+        batteryNum,
+        network_status ? String(network_status).substring(0, 50) : null,
+        outside_reason ? String(outside_reason).trim() : null,
       ]
     );
 
     const attendanceId = result.lastID;
 
-    // Also insert first location track point
+    // 2. Insert geofence attendance evidence
+    await db.run(
+      `INSERT INTO geofence_attendance_evidence (
+        attendance_id, employee_id, office_id, submitted_latitude, submitted_longitude,
+        distance_from_office, accuracy_meters, location_source, geofence_result,
+        review_status, outside_reason, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        attendanceId,
+        userId,
+        officeId,
+        latNum,
+        lngNum,
+        distMeters,
+        accNum,
+        locSource,
+        geofenceResult.geofenceResult,
+        reviewStatus,
+        outside_reason ? String(outside_reason).trim() : null,
+        nowIso,
+      ]
+    );
+
+    // 3. Insert location track point
     await db.run(
       `INSERT INTO location_tracks (
-        user_id, attendance_id, latitude, longitude, accuracy, is_mocked, timestamp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [userId, attendanceId, latNum, lngNum, accNum || 10.0, isMockedVal, nowIso]
+        user_id, attendance_id, latitude, longitude, accuracy, is_mocked,
+        location_source, battery_percentage, network_status, location_permission_status,
+        location_services_enabled, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'granted', 1, ?)`,
+      [
+        userId,
+        attendanceId,
+        latNum,
+        lngNum,
+        accNum || 10.0,
+        isMockedVal,
+        locSource,
+        batteryNum,
+        network_status ? String(network_status).substring(0, 50) : null,
+        nowIso,
+      ]
     );
+
+    // 4. Alert admin if check-in is outside geofence
+    if (!isInside) {
+      const officeName = nearestOffice ? nearestOffice.office_name : 'authorized office';
+      const outsideMsg = `${user ? user.full_name : `User #${userId}`} checked in outside authorized geofence (${Math.round(distMeters)}m from ${officeName}). Pending admin review.`;
+      await db.run(
+        `INSERT INTO gps_alerts (user_id, alert_type, message, latitude, longitude, resolved)
+         VALUES (?, 'GEOFENCE_VIOLATION', ?, ?, ?, 0)`,
+        [userId, outsideMsg, latNum, lngNum]
+      );
+    }
 
     const record = await db.get('SELECT * FROM attendance WHERE id = ?', [attendanceId]);
 
+    const message = isInside
+      ? 'Check-in successful! Continuous GPS tracking started.'
+      : 'Your attendance has been submitted for admin approval because you are outside the authorized office location.';
+
     return res.status(201).json({
-      message: 'Check-in successful! Continuous GPS tracking started.',
+      message,
+      isPendingReview: !isInside,
+      geofenceStatus,
+      reviewStatus,
+      distanceFromOffice: distMeters,
+      nearestOffice: nearestOffice ? { id: nearestOffice.id, name: nearestOffice.office_name } : null,
       attendance: record,
     });
   } catch (error) {
@@ -145,11 +252,21 @@ async function checkIn(req, res) {
   }
 }
 
-// Check-out (Requirements 6, 7, 9, 19)
+// Check-out (Geofencing is strictly NOT required during checkout)
 async function checkOut(req, res) {
   try {
     const userId = req.user.id;
-    const { latitude, longitude, address, accuracy, is_mocked } = req.body;
+    const {
+      latitude,
+      longitude,
+      address,
+      accuracy,
+      is_mocked,
+      captured_at = null,
+      location_source = 'GPS',
+      battery_percentage = null,
+      network_status = null,
+    } = req.body;
 
     if (latitude === undefined || longitude === undefined) {
       cleanupOrphanFile(req.file);
@@ -160,24 +277,39 @@ async function checkOut(req, res) {
       return res.status(400).json({ error: 'Selfie photo is required for check-out' });
     }
 
-    const active = await db.get(
-      "SELECT * FROM attendance WHERE user_id = ? AND status = 'checked_in' ORDER BY id DESC LIMIT 1",
-      [userId]
-    );
-
-    if (!active) {
-      // Delete saved file when controller rejects request to prevent orphan files
-      cleanupOrphanFile(req.file);
-      return res.status(400).json({ error: 'No active check-in found to check out from.' });
-    }
-
+    const today = getCompanyDate();
     const nowIso = new Date().toISOString();
+    const checkOutTimestamp = captured_at ? new Date(captured_at).toISOString() : nowIso;
     const selfieFilename = req.file.filename;
 
     const latNum = parseFloat(latitude);
     const lngNum = parseFloat(longitude);
     const accNum = accuracy !== undefined && accuracy !== null && accuracy !== '' ? parseFloat(accuracy) : null;
     const isMockedVal = is_mocked === true || is_mocked === 'true' || is_mocked === 1 || is_mocked === '1' ? 1 : 0;
+    const batteryNum = battery_percentage !== undefined && battery_percentage !== null ? parseFloat(battery_percentage) : null;
+    const locSource = ['GPS', 'NETWORK', 'FUSED', 'LAST_KNOWN'].includes(String(location_source).toUpperCase())
+      ? String(location_source).toUpperCase()
+      : 'GPS';
+
+    // Look for active check-in session
+    let targetAttendance = await db.get(
+      "SELECT * FROM attendance WHERE user_id = ? AND status = 'checked_in' ORDER BY id DESC LIMIT 1",
+      [userId]
+    );
+
+    // If no active session found, check if a shift on this date was automatically closed at 9 PM
+    // (Offline checkout reconciliation support)
+    if (!targetAttendance) {
+      targetAttendance = await db.get(
+        "SELECT * FROM attendance WHERE user_id = ? AND date = ? AND status = 'auto_checked_out' ORDER BY id DESC LIMIT 1",
+        [userId, today]
+      );
+    }
+
+    if (!targetAttendance) {
+      cleanupOrphanFile(req.file);
+      return res.status(400).json({ error: 'No active check-in found to check out from.' });
+    }
 
     await db.run(
       `UPDATE attendance SET 
@@ -192,26 +324,38 @@ async function checkOut(req, res) {
         status = 'checked_out'
        WHERE id = ?`,
       [
-        nowIso,
+        checkOutTimestamp,
         latNum,
         lngNum,
         accNum,
         isMockedVal,
         address || 'Recorded location',
         selfieFilename,
-        active.id,
+        targetAttendance.id,
       ]
     );
 
     // Final location track point
     await db.run(
       `INSERT INTO location_tracks (
-        user_id, attendance_id, latitude, longitude, accuracy, is_mocked, timestamp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [userId, active.id, latNum, lngNum, accNum || 10.0, isMockedVal, nowIso]
+        user_id, attendance_id, latitude, longitude, accuracy, is_mocked,
+        location_source, battery_percentage, network_status, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        targetAttendance.id,
+        latNum,
+        lngNum,
+        accNum || 10.0,
+        isMockedVal,
+        locSource,
+        batteryNum,
+        network_status ? String(network_status).substring(0, 50) : null,
+        checkOutTimestamp,
+      ]
     );
 
-    const updated = await db.get('SELECT * FROM attendance WHERE id = ?', [active.id]);
+    const updated = await db.get('SELECT * FROM attendance WHERE id = ?', [targetAttendance.id]);
 
     return res.json({
       message: 'Check-out successful! GPS tracking stopped.',

@@ -22,6 +22,8 @@ import '../admin/admin_leave_screen.dart';
 import '../admin/admin_salary_screen.dart';
 import '../admin/admin_audit_logs_screen.dart';
 import '../admin/admin_backup_screen.dart';
+import '../admin/admin_geofencing_screen.dart';
+import '../admin/admin_attendance_review_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -290,6 +292,9 @@ class _HomeScreenState extends State<HomeScreen> {
             isMocked: gpsResult.isMocked,
             address: currentPlace,
             selfieFile: confirmedSelfieFile,
+            locationSource: gpsResult.locationSource,
+            batteryPercentage: gpsResult.batteryPercentage,
+            networkStatus: gpsResult.networkStatus,
           );
 
           setState(() {
@@ -301,16 +306,43 @@ class _HomeScreenState extends State<HomeScreen> {
           await BackgroundTrackerService.startTracking();
 
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                backgroundColor: gpsResult.isMocked ? AppColors.warning : AppColors.success,
-                content: Text(
-                  gpsResult.isMocked
-                      ? '⚠️ Checked in (Flagged: Mock Location detected). Continuous tracking active.'
-                      : '✅ Checked In successfully! GPS Tracking Active.',
+            if (newRecord.isPendingReview) {
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: AppColors.cardDark,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  title: Row(
+                    children: const [
+                      Icon(Icons.location_off, color: AppColors.warning, size: 24),
+                      SizedBox(width: 8),
+                      Text('Outside Office Geofence', style: TextStyle(color: Colors.white, fontSize: 16)),
+                    ],
+                  ),
+                  content: const Text(
+                    'Your attendance has been submitted for admin approval because you are outside the authorized office location.\n\nOnce approved by an admin, it will be included in your payable attendance.',
+                    style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('OK', style: TextStyle(color: AppColors.info, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
                 ),
-              ),
-            );
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  backgroundColor: gpsResult.isMocked ? AppColors.warning : AppColors.success,
+                  content: Text(
+                    gpsResult.isMocked
+                        ? '⚠️ Checked in (Flagged: Mock Location detected). Continuous tracking active.'
+                        : '✅ Checked In inside office geofence! GPS Tracking Active.',
+                  ),
+                ),
+              );
+            }
           }
         } catch (apiErr) {
           final errStr = apiErr.toString();
@@ -1248,7 +1280,101 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           ),
-                                                  if (ApiService().currentUser?.isRootAdmin ?? false) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.cardDark,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: Colors.amberAccent.withOpacity(0.35)),
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const AdminAttendanceReviewScreen()),
+                                );
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: Color(0x33FFC107),
+                                      child: Icon(Icons.rule_folder_outlined, color: Colors.amberAccent, size: 24),
+                                    ),
+                                    SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Attendance Review Requests',
+                                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
+                                          SizedBox(height: 3),
+                                          Text(
+                                            'Review outside-geofence check-ins, verify selfie evidence & approve/reject',
+                                            style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_forward_ios, color: Colors.amberAccent, size: 14),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.cardDark,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: Colors.blueAccent.withOpacity(0.35)),
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const AdminGeofencingScreen()),
+                                );
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Row(
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 22,
+                                      backgroundColor: Color(0x33448AFF),
+                                      child: Icon(Icons.location_city_outlined, color: Colors.blueAccent, size: 24),
+                                    ),
+                                    SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Geofencing & Office Management',
+                                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
+                                          SizedBox(height: 3),
+                                          Text(
+                                            'Multi-office locations, GPS coordinates, geofence radius & site rules',
+                                            style: TextStyle(color: AppColors.textDim, fontSize: 11.5),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Icon(Icons.arrow_forward_ios, color: Colors.blueAccent, size: 14),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (ApiService().currentUser?.isRootAdmin ?? false) ...[
                             const SizedBox(height: 12),
                             Container(
                               decoration: BoxDecoration(

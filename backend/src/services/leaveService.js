@@ -122,7 +122,8 @@ async function accrueMonthlyLeaves(yearMonth, force = false) {
         `SELECT COUNT(DISTINCT date) as count
          FROM attendance
          WHERE user_id = ? AND date >= ? AND date <= ?
-           AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))`,
+           AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))
+           AND (review_status IS NULL OR review_status NOT IN ('pending_review', 'rejected'))`,
         [user.id, yearStartStr, monthEndStr]
       );
       const cumulativePresent = presentCountRow?.count || 0;

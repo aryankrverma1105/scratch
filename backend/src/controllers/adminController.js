@@ -280,7 +280,7 @@ async function deleteUser(req, res) {
 // Live tracking of all employees (Requirement 12)
 async function getLiveLocations(req, res) {
   try {
-    // For every employee, fetch their active attendance and most recent location track
+    // For every active employee, fetch their active attendance, geofence, and most recent location track
     const queryStr = `
       SELECT 
         u.id as user_id,
@@ -294,15 +294,28 @@ async function getLiveLocations(req, res) {
         a.check_in_lat,
         a.check_in_lng,
         a.check_in_address,
+        a.geofence_status,
+        a.review_status,
+        a.distance_from_office,
+        a.office_id,
+        o.office_name,
+        o.radius_meters as office_radius,
+        o.latitude as office_lat,
+        o.longitude as office_lng,
         t.latitude as last_latitude,
         t.longitude as last_longitude,
         t.accuracy as last_accuracy,
         t.speed as last_speed,
         t.is_gps_off as last_is_gps_off,
         t.is_mocked as last_is_mocked,
+        t.location_source as last_location_source,
+        t.battery_percentage as last_battery_percentage,
+        t.network_status as last_network_status,
+        t.location_services_enabled as last_location_services_enabled,
         t.timestamp as last_location_time
       FROM users u
       LEFT JOIN attendance a ON a.user_id = u.id AND a.status = 'checked_in'
+      LEFT JOIN offices o ON a.office_id = o.id
       LEFT JOIN (
         SELECT lt.*
         FROM location_tracks lt
@@ -384,6 +397,14 @@ async function getAllAttendance(req, res) {
       sql += ' AND a.user_id = ?';
       params.push(userId);
     }
+    if (req.query.geofence_status) {
+      sql += ' AND a.geofence_status = ?';
+      params.push(req.query.geofence_status);
+    }
+    if (req.query.review_status) {
+      sql += ' AND a.review_status = ?';
+      params.push(req.query.review_status);
+    }
     if (search && search.trim()) {
       const term = `%${search.trim()}%`;
       sql += ' AND (u.full_name LIKE ? OR u.email LIKE ? OR CAST(u.id AS TEXT) LIKE ?)';
@@ -397,24 +418,16 @@ async function getAllAttendance(req, res) {
 
     // Compute distinct total present employees for the selected date
     let totalPresent = 0;
-    if (date) {
-      const presentRow = await db.get(
-        `SELECT COUNT(DISTINCT user_id) as count
-         FROM attendance
-         WHERE date = ? AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))`,
-        [date]
-      );
-      totalPresent = presentRow?.count || 0;
-    } else {
-      const todayStr = getCompanyDate();
-      const presentRow = await db.get(
-        `SELECT COUNT(DISTINCT user_id) as count
-         FROM attendance
-         WHERE date = ? AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))`,
-        [todayStr]
-      );
-      totalPresent = presentRow?.count || 0;
-    }
+    const targetDate = date || getCompanyDate();
+    const presentRow = await db.get(
+      `SELECT COUNT(DISTINCT user_id) as count
+       FROM attendance
+       WHERE date = ? 
+         AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))
+         AND (review_status IS NULL OR review_status NOT IN ('pending_review', 'rejected'))`,
+      [targetDate]
+    );
+    totalPresent = presentRow?.count || 0;
 
     return res.json({ records, totalPresent });
   } catch (error) {
@@ -520,6 +533,204 @@ async function resolveGpsAlert(req, res) {
   }
 }
 
+/**
+ * Comprehensive Admin Dashboard Stats (Web & Mobile Admin)
+ */
+async function getDashboardStats(req, res) {
+  try {
+    const todayStr = getCompanyDate();
+
+    // 1. Employee counts
+    const totalEmployeesRow = await db.get(
+      "SELECT COUNT(*) as c FROM users WHERE role = 'employee' AND is_active = 1"
+    );
+    const totalEmployees = totalEmployeesRow?.c || 0;
+
+    // 2. Present today (distinct approved/valid users)
+    const presentRow = await db.get(
+      `SELECT COUNT(DISTINCT user_id) as c FROM attendance
+       WHERE date = ? 
+         AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))
+         AND (review_status IS NULL OR review_status NOT IN ('pending_review', 'rejected'))`,
+      [todayStr]
+    );
+    const presentToday = presentRow?.c || 0;
+    const absentToday = Math.max(totalEmployees - presentToday, 0);
+
+    // 3. Currently on duty (checked_in)
+    const onDutyRow = await db.get(
+      "SELECT COUNT(DISTINCT user_id) as c FROM attendance WHERE status = 'checked_in'"
+    );
+    const onDutyToday = onDutyRow?.c || 0;
+
+    // 4. Pending attendance approvals
+    const pendingReviewsRow = await db.get(
+      "SELECT COUNT(*) as c FROM attendance WHERE review_status = 'pending_review'"
+    );
+    const pendingApprovals = pendingReviewsRow?.c || 0;
+
+    // 5. Employees with GPS unavailable / disabled
+    const gpsUnavailableRow = await db.get(
+      "SELECT COUNT(DISTINCT user_id) as c FROM gps_alerts WHERE alert_type IN ('GPS_DISABLED', 'NO_SIGNAL') AND resolved = 0"
+    );
+    const gpsUnavailable = gpsUnavailableRow?.c || 0;
+
+    // 6. Employees outside geofence today
+    const outsideGeofenceRow = await db.get(
+      "SELECT COUNT(*) as c FROM attendance WHERE date = ? AND geofence_status = 'outside'",
+      [todayStr]
+    );
+    const outsideGeofence = outsideGeofenceRow?.c || 0;
+
+    // 7. Active offices
+    const activeOfficesRow = await db.get(
+      "SELECT COUNT(*) as c FROM offices WHERE status = 'active'"
+    );
+    const activeOffices = activeOfficesRow?.c || 0;
+
+    // 8. Recent alerts (latest 5)
+    const recentAlerts = await db.query(
+      `SELECT ga.*, u.full_name, u.email, u.department
+       FROM gps_alerts ga
+       JOIN users u ON ga.user_id = u.id
+       ORDER BY ga.id DESC LIMIT 5`
+    );
+
+    // 9. Department breakdown for today
+    const deptAttendance = await db.query(
+      `SELECT u.department, COUNT(DISTINCT a.user_id) as present_count
+       FROM attendance a
+       JOIN users u ON a.user_id = u.id
+       WHERE a.date = ? 
+         AND (a.status IS NULL OR a.status NOT IN ('cancelled', 'rejected'))
+         AND (a.review_status IS NULL OR a.review_status NOT IN ('pending_review', 'rejected'))
+       GROUP BY u.department`,
+      [todayStr]
+    );
+
+    return res.json({
+      todayDate: todayStr,
+      totalEmployees,
+      presentToday,
+      absentToday,
+      onDutyToday,
+      pendingApprovals,
+      gpsUnavailable,
+      outsideGeofence,
+      activeOffices,
+      recentAlerts,
+      departmentBreakdown: deptAttendance,
+    });
+  } catch (err) {
+    console.error('getDashboardStats error:', err);
+    return res.status(500).json({ error: 'Failed to fetch dashboard stats', details: err.message });
+  }
+}
+
+/**
+ * Filterable reports generation for admin portal with CSV export
+ */
+async function getDashboardReports(req, res) {
+  try {
+    const { type = 'daily', date, month, office_id, format } = req.query;
+    const todayStr = getCompanyDate();
+
+    let data = [];
+    let headers = [];
+
+    if (type === 'daily') {
+      const targetDate = date || todayStr;
+      let sql = `
+        SELECT a.id, a.user_id, u.full_name, u.department, a.date, a.check_in_time, a.check_out_time,
+               a.status, a.geofence_status, a.review_status, a.distance_from_office, o.office_name,
+               a.location_source, a.battery_percentage, a.outside_reason
+        FROM attendance a
+        JOIN users u ON a.user_id = u.id
+        LEFT JOIN offices o ON a.office_id = o.id
+        WHERE a.date = ?
+      `;
+      const params = [targetDate];
+      if (office_id) {
+        sql += ' AND a.office_id = ?';
+        params.push(parseInt(office_id, 10));
+      }
+      sql += ' ORDER BY a.check_in_time ASC';
+      data = await db.query(sql, params);
+      headers = [
+        'ID', 'User ID', 'Employee Name', 'Department', 'Date', 'Check In', 'Check Out',
+        'Status', 'Geofence Status', 'Review Status', 'Distance (m)', 'Office', 'Source', 'Battery %', 'Reason'
+      ];
+    } else if (type === 'monthly') {
+      const targetMonth = month || todayStr.substring(0, 7);
+      const startDay = `${targetMonth}-01`;
+      const endDay = `${targetMonth}-31`;
+
+      const sql = `
+        SELECT u.id as user_id, u.full_name, u.department,
+               COUNT(DISTINCT CASE WHEN (a.status IS NULL OR a.status NOT IN ('cancelled', 'rejected')) AND (a.review_status IS NULL OR a.review_status NOT IN ('pending_review', 'rejected')) THEN a.date END) as present_days,
+               COUNT(CASE WHEN a.geofence_status = 'outside' THEN 1 END) as outside_geofence_count,
+               COUNT(CASE WHEN a.review_status = 'pending_review' THEN 1 END) as pending_review_count
+        FROM users u
+        LEFT JOIN attendance a ON a.user_id = u.id AND a.date >= ? AND a.date <= ?
+        WHERE u.role = 'employee' AND u.is_active = 1
+        GROUP BY u.id, u.full_name, u.department
+        ORDER BY u.full_name ASC
+      `;
+      data = await db.query(sql, [startDay, endDay]);
+      headers = ['User ID', 'Employee Name', 'Department', 'Present Days', 'Outside Geofence Count', 'Pending Reviews'];
+    } else if (type === 'geofence_violations') {
+      const sql = `
+        SELECT a.id, a.user_id, u.full_name, u.department, a.date, a.check_in_time,
+               a.distance_from_office, o.office_name, a.review_status, a.review_reason,
+               a.outside_reason, a.check_in_lat, a.check_in_lng
+        FROM attendance a
+        JOIN users u ON a.user_id = u.id
+        LEFT JOIN offices o ON a.office_id = o.id
+        WHERE a.geofence_status = 'outside'
+        ORDER BY a.id DESC LIMIT 200
+      `;
+      data = await db.query(sql);
+      headers = [
+        'ID', 'User ID', 'Employee Name', 'Department', 'Date', 'Check In',
+        'Distance (m)', 'Assigned Office', 'Review Status', 'Admin Reason', 'Employee Reason', 'Latitude', 'Longitude'
+      ];
+    } else if (type === 'gps_availability') {
+      const sql = `
+        SELECT ga.id, ga.user_id, u.full_name, u.department, ga.alert_type, ga.message,
+               ga.resolved, ga.created_at, ga.latitude, ga.longitude
+        FROM gps_alerts ga
+        JOIN users u ON ga.user_id = u.id
+        WHERE ga.alert_type IN ('GPS_DISABLED', 'GPS_RESTORED', 'NO_SIGNAL', 'LOCATION_PERMISSION_REVOKED')
+        ORDER BY ga.id DESC LIMIT 200
+      `;
+      data = await db.query(sql);
+      headers = ['Alert ID', 'User ID', 'Employee Name', 'Department', 'Alert Type', 'Message', 'Resolved', 'Timestamp', 'Latitude', 'Longitude'];
+    }
+
+    if (format === 'csv') {
+      let csvContent = headers.map((h) => `"${h}"`).join(',') + '\n';
+      for (const row of data) {
+        const line = Object.values(row)
+          .map((v) => {
+            if (v === null || v === undefined) return '""';
+            return `"${String(v).replace(/"/g, '""')}"`;
+          })
+          .join(',');
+        csvContent += line + '\n';
+      }
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="report_${type}_${Date.now()}.csv"`);
+      return res.send(csvContent);
+    }
+
+    return res.json({ type, count: data.length, data });
+  } catch (err) {
+    console.error('getDashboardReports error:', err);
+    return res.status(500).json({ error: 'Failed to generate report', details: err.message });
+  }
+}
+
 module.exports = {
   listUsers,
   createUser,
@@ -531,5 +742,7 @@ module.exports = {
   getUserProfile,
   getGpsAlerts,
   resolveGpsAlert,
+  getDashboardStats,
+  getDashboardReports,
   isRootSuperAdmin,
 };
