@@ -1349,7 +1349,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     CircleAvatar(
                                       radius: 22,
                                       backgroundColor: Color(0x33448AFF),
-                                      child: Icon(Icons.location_city_outlined, color: Colors.blueAccent, size: 24),
+                                      child: Icon(Icons.location_city, color: Colors.blueAccent, size: 24),
                                     ),
                                     SizedBox(width: 14),
                                     Expanded(

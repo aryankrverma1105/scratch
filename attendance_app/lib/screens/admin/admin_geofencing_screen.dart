@@ -326,7 +326,7 @@ class _AdminGeofencingScreenState extends State<AdminGeofencingScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.location_city_outlined, size: 64, color: Colors.white24),
+                          Icon(Icons.location_city, size: 64, color: Colors.white24),
                           const SizedBox(height: 16),
                           const Text('No office locations configured', style: TextStyle(color: Colors.white70, fontSize: 16)),
                           const SizedBox(height: 8),

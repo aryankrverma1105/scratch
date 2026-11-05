@@ -18,9 +18,17 @@ function validateBody(schema) {
 }
 
 const loginSchema = z.object({
-  identifier: z.string().trim().min(2, 'Username or email required'),
+  identifier: z.string().trim().optional(),
+  email: z.string().trim().optional(),
+  username: z.string().trim().optional(),
   password: z.string().min(1, 'Password required'),
-});
+}).refine(data => data.identifier || data.email || data.username, {
+  message: 'Username or email required',
+  path: ['identifier']
+}).transform(data => ({
+  ...data,
+  identifier: (data.identifier || data.email || data.username).trim()
+}));
 
 const changePasswordSchema = z.object({
   oldPassword: z.string().min(1, 'Old password required'),

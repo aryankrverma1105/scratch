@@ -598,7 +598,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (submitBtn) submitBtn.disabled = true;
 
       try {
-        const res = await apiRequest('/api/auth/login', 'POST', { email, password });
+        const res = await apiRequest('/api/auth/login', 'POST', {
+          identifier: email,
+          email: email,
+          password: password,
+        });
         localStorage.setItem('sologix_admin_token', res.token);
         localStorage.setItem('sologix_admin_user', JSON.stringify(res.user));
         currentUser = res.user;
