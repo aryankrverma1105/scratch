@@ -65,7 +65,7 @@ app.get('/api/admin/audit-logs', authenticateToken, requireRole('admin'), auditL
 // Static assets for Admin Web Application
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get(['/admin', '/admin/*'], (req, res) => {
+app.use('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin', 'index.html'));
 });
 
