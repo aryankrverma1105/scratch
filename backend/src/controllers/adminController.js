@@ -22,7 +22,7 @@ async function listUsers(req, res) {
       `SELECT id, email, username, full_name, role, department, phone, is_active, created_at 
        FROM users ORDER BY created_at DESC`
     );
-    return res.json({ users });
+    return res.json({ users, employees: users });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to fetch users', details: error.message });
   }
@@ -330,7 +330,8 @@ async function getLiveLocations(req, res) {
     `;
 
     const employees = await db.query(queryStr);
-    return res.json({ employees });
+    const offices = await db.query("SELECT * FROM offices WHERE status = 'active' ORDER BY id DESC");
+    return res.json({ employees, offices });
   } catch (error) {
     console.error('getLiveLocations error:', error);
     return res.status(500).json({ error: 'Failed to fetch live locations', details: error.message });
@@ -382,9 +383,11 @@ async function getAllAttendance(req, res) {
   try {
     const { date, userId, search, limit = 100 } = req.query;
     let sql = `
-      SELECT a.*, u.full_name, u.email, u.department
+      SELECT a.*, u.full_name, u.full_name as employee_name, u.email, u.department, a.user_id as employee_id,
+             o.office_name
       FROM attendance a
       JOIN users u ON a.user_id = u.id
+      LEFT JOIN offices o ON a.office_id = o.id
       WHERE 1=1
     `;
     const params = [];
@@ -590,7 +593,7 @@ async function getDashboardStats(req, res) {
 
     // 8. Recent alerts (latest 5)
     const recentAlerts = await db.query(
-      `SELECT ga.*, u.full_name, u.email, u.department
+      `SELECT ga.*, u.full_name, u.full_name as employee_name, u.email, u.department
        FROM gps_alerts ga
        JOIN users u ON ga.user_id = u.id
        ORDER BY ga.id DESC LIMIT 5`
@@ -608,18 +611,31 @@ async function getDashboardStats(req, res) {
       [todayStr]
     );
 
-    return res.json({
+    // 10. Offices list for dashboard mini widget
+    const offices = await db.query(
+      `SELECT * FROM offices ORDER BY id DESC`
+    );
+
+    const statsPayload = {
       todayDate: todayStr,
       totalEmployees,
       presentToday,
       absentToday,
       onDutyToday,
+      activeSessions: onDutyToday,
       pendingApprovals,
+      pendingReviews: pendingApprovals,
       gpsUnavailable,
       outsideGeofence,
       activeOffices,
       recentAlerts,
+      offices,
       departmentBreakdown: deptAttendance,
+    };
+
+    return res.json({
+      ...statsPayload,
+      stats: statsPayload,
     });
   } catch (err) {
     console.error('getDashboardStats error:', err);

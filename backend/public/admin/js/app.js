@@ -224,14 +224,14 @@ function switchSection(sectionId) {
 async function loadDashboardStats() {
   try {
     const data = await apiRequest('/api/admin/dashboard/stats');
-    const s = data.stats || {};
+    const s = data.stats || data || {};
 
-    setElText('kpi-total-employees', s.totalEmployees || 0);
-    setElText('kpi-present-today', s.presentToday || 0);
-    setElText('kpi-active-sessions', s.activeSessions || 0);
-    setElText('kpi-pending-reviews', s.pendingReviews || 0);
-    setElText('kpi-outside-geofence', s.outsideGeofence || 0);
-    setElText('kpi-active-offices', s.activeOffices || 0);
+    setElText('kpi-total-employees', s.totalEmployees ?? 0);
+    setElText('kpi-present-today', s.presentToday ?? 0);
+    setElText('kpi-active-sessions', s.activeSessions ?? s.onDutyToday ?? 0);
+    setElText('kpi-pending-reviews', s.pendingReviews ?? s.pendingApprovals ?? 0);
+    setElText('kpi-outside-geofence', s.outsideGeofence ?? 0);
+    setElText('kpi-active-offices', s.activeOffices ?? 0);
 
     // Render Recent Alerts
     const alertsList = document.getElementById('recent-alerts-list');
@@ -243,7 +243,7 @@ async function loadDashboardStats() {
           <div style="padding: 10px 0; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center;">
             <div>
               <span class="badge ${a.alert_type === 'GEOFENCE_VIOLATION' ? 'badge-warning' : 'badge-danger'}">${a.alert_type}</span>
-              <span style="font-size: 13px; font-weight: 600; margin-left: 8px;">${escapeHtml(a.employee_name || 'Employee')}</span>
+              <span style="font-size: 13px; font-weight: 600; margin-left: 8px;">${escapeHtml(a.employee_name || a.full_name || 'Employee')}</span>
               <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">${escapeHtml(a.message || 'Alert triggered')}</div>
             </div>
             <span style="font-size: 11px; color: #64748b;">${escapeHtml(a.created_at_ist || a.created_at || '')}</span>
@@ -453,8 +453,8 @@ function renderAttendanceTable(list) {
     return `
       <tr>
         <td>
-          <strong>${escapeHtml(item.employee_name || 'Employee')}</strong>
-          <div class="text-xs text-muted">ID: ${item.employee_id} | ${escapeHtml(item.department || 'General')}</div>
+          <strong>${escapeHtml(item.employee_name || item.full_name || 'Employee')}</strong>
+          <div class="text-xs text-muted">ID: ${item.employee_id || item.user_id || 'N/A'} | ${escapeHtml(item.department || 'General')}</div>
         </td>
         <td>${escapeHtml(item.check_in_time_ist || item.check_in_time || 'N/A')}</td>
         <td>${escapeHtml(item.check_out_time_ist || item.check_out_time || (item.status === 'present' ? 'Active Session' : 'N/A'))}</td>
@@ -478,8 +478,8 @@ async function loadEmployees() {
   if (!tbody) return;
 
   try {
-    const data = await apiRequest('/api/admin/employees');
-    allEmployees = data.employees || [];
+    const data = await apiRequest('/api/admin/users');
+    allEmployees = data.employees || data.users || [];
     renderEmployeesTable(allEmployees);
   } catch (err) {
     console.error('Failed to load employees:', err);

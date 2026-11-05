@@ -16,6 +16,7 @@ router.get('/dashboard/reports', adminController.getDashboardReports);
 
 // User management (Requirement 4 & 5)
 router.get('/users', adminController.listUsers);
+router.get('/employees', adminController.listUsers);
 router.post('/users', validateBody(createUserSchema), adminController.createUser);
 router.get('/users/:id/profile', adminController.getUserProfile);
 router.put('/users/:id', adminController.updateUser);

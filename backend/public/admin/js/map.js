@@ -22,11 +22,10 @@ function initLiveMap() {
   // Default centered at Ranchi / India coordinates
   liveMap = L.map('live-map-view').setView([23.3441, 85.309563], 13);
 
-  // Dark Carto tile layer
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-    subdomains: 'abcd',
-    maxZoom: 19
+  // Carto Voyager tile layer with authenticated API key
+  L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_52zk_1_7ea6294b28eba94d5b65b071', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    maxZoom: 20
   }).addTo(liveMap);
 
   liveMarkersLayer = L.layerGroup().addTo(liveMap);
@@ -203,9 +202,9 @@ function initOfficePickerMap() {
 
   pickerMap = L.map('office-picker-map').setView([defaultLat, defaultLng], 14);
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-    maxZoom: 19
+  L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_52zk_1_7ea6294b28eba94d5b65b071', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    maxZoom: 20
   }).addTo(pickerMap);
 
   pickerMarker = L.marker([defaultLat, defaultLng], { draggable: true }).addTo(pickerMap);
