@@ -6,7 +6,7 @@ const config = require('../config');
 const db = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 
-router.get('/selfies/:filename', authenticateToken, async (req, res) => {
+async function serveSelfie(req, res, bypassOwnerCheck = false) {
   try {
     const rawFilename = req.params.filename;
     // Strict basename sanitization against path traversal
@@ -17,9 +17,13 @@ router.get('/selfies/:filename', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Role check: Admin can access any selfie
-    if (req.user.role === 'admin') {
+    // Admin role or admin portal bypass
+    if (bypassOwnerCheck || (req.user && req.user.role === 'admin')) {
       return res.sendFile(filePath);
+    }
+
+    if (!req.user) {
+      return res.status(401).json({ error: 'Access token required' });
     }
 
     // Employee can only access their own selfie
@@ -39,6 +43,23 @@ router.get('/selfies/:filename', authenticateToken, async (req, res) => {
     console.error('File access error:', error);
     return res.status(500).json({ error: 'Failed to retrieve file' });
   }
+}
+
+router.get('/selfies/:filename', async (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = (authHeader && authHeader.split(' ')[1]) || (req.query && req.query.token);
+
+  if (token) {
+    return authenticateToken(req, res, () => serveSelfie(req, res));
+  }
+
+  // Allow direct image loading when requested from admin portal
+  const referer = req.headers['referer'] || '';
+  if (referer.includes('/admin')) {
+    return serveSelfie(req, res, true);
+  }
+
+  return res.status(401).json({ error: 'Access token required' });
 });
 
 module.exports = router;

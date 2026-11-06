@@ -106,10 +106,38 @@ async function refreshLiveMapData() {
     // 2. Draw employee markers
     const bounds = [];
     employees.forEach(emp => {
-      if (!emp.latitude || !emp.longitude) return;
-      const lat = parseFloat(emp.latitude);
-      const lng = parseFloat(emp.longitude);
+      const rawLat = emp.latitude ?? emp.last_latitude ?? emp.check_in_lat;
+      const rawLng = emp.longitude ?? emp.last_longitude ?? emp.check_in_lng;
+      if (rawLat === undefined || rawLat === null || rawLng === undefined || rawLng === null) return;
+
+      const lat = parseFloat(rawLat);
+      const lng = parseFloat(rawLng);
+      if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return;
       bounds.push([lat, lng]);
+
+      // Determine Location Capturing Method
+      const locSource = String(emp.location_source || emp.last_location_source || 'GPS').toUpperCase();
+      const accuracyNum = emp.accuracy ?? emp.last_accuracy ?? emp.check_in_accuracy;
+      const accuracyStr = accuracyNum ? `${Math.round(accuracyNum)}m` : 'N/A';
+      const isCellTower = locSource === 'CELL_NETWORK' || locSource === 'CELL_TOWER' || (accuracyNum && accuracyNum > 100);
+      const isWifi = locSource === 'WIFI_NETWORK';
+
+      let methodBadge = '<span class="badge badge-success" style="font-size:10px;">🛰️ GPS Satellites</span>';
+      let methodFullName = 'Location Services (GPS Satellites)';
+      let methodDescription = 'Captured using hardware GPS satellite receiver';
+      let markerIconChar = '📍';
+
+      if (isCellTower) {
+        methodBadge = '<span class="badge badge-warning" style="font-size:10px;">🗼 Cell Tower</span>';
+        methodFullName = 'Mobile Cell Tower Network';
+        methodDescription = 'Captured via cellular tower network triangulation (indoor/low-satellite fallback)';
+        markerIconChar = '🗼';
+      } else if (isWifi) {
+        methodBadge = '<span class="badge badge-info" style="font-size:10px;">📶 Wi-Fi Network</span>';
+        methodFullName = 'Wi-Fi / Network Services';
+        methodDescription = 'Captured via Wi-Fi network positioning';
+        markerIconChar = '📶';
+      }
 
       // Marker color logic
       let markerColor = '#10b981'; // Green inside
@@ -117,8 +145,8 @@ async function refreshLiveMapData() {
 
       if (emp.review_status === 'pending_review' || emp.geofence_status === 'outside') {
         markerColor = '#f59e0b'; // Amber review/outside
-        statusLabel = 'Outside Geofence (Review)';
-      } else if (!emp.is_active_session) {
+        statusLabel = 'Outside Geofence (Pending Approval)';
+      } else if (emp.is_active_session === 0 || emp.attendance_status === 'checked_out') {
         markerColor = '#64748b'; // Gray checked out
         statusLabel = 'Checked Out';
       }
@@ -128,49 +156,59 @@ async function refreshLiveMapData() {
         html: `
           <div style="
             background: ${markerColor};
-            width: 22px;
-            height: 22px;
+            width: 28px;
+            height: 28px;
             border-radius: 50%;
             border: 2px solid #ffffff;
-            box-shadow: 0 0 8px ${markerColor};
+            box-shadow: 0 0 10px ${markerColor};
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 10px;
-            font-weight: bold;
-            color: #000;">
+            font-size: 13px;
+            cursor: pointer;
+            color: #ffffff;">
+            ${markerIconChar}
           </div>`,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11]
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
       });
 
       const marker = L.marker([lat, lng], { icon: empIcon });
-      const batteryStr = emp.battery_percentage !== null ? `${emp.battery_percentage}%` : 'N/A';
-      const sourceStr = emp.location_source || 'GPS';
-      const accuracyStr = emp.accuracy ? `${Math.round(emp.accuracy)}m` : 'N/A';
+      const batteryStr = (emp.battery_percentage ?? emp.last_battery_percentage) !== null && (emp.battery_percentage ?? emp.last_battery_percentage) !== undefined
+        ? `${emp.battery_percentage ?? emp.last_battery_percentage}%`
+        : 'N/A';
 
       marker.bindPopup(`
-        <div style="font-family: inherit; font-size: 13px; min-width: 180px;">
-          <strong style="font-size: 14px;">${escapeHtml(emp.employee_name || 'Employee')}</strong><br>
-          <span style="color: #94a3b8; font-size: 12px;">ID: ${emp.employee_id || emp.id} | ${escapeHtml(emp.department || 'General')}</span>
+        <div style="font-family: inherit; font-size: 13px; min-width: 220px;">
+          <strong style="font-size: 14.5px;">${escapeHtml(emp.employee_name || emp.full_name || 'Employee')}</strong><br>
+          <span style="color: #94a3b8; font-size: 12px;">ID: ${emp.employee_id || emp.user_id || emp.id} | ${escapeHtml(emp.department || 'General')}</span>
           <hr style="border: 0; border-top: 1px solid #334155; margin: 8px 0;">
+          
+          <div style="margin-bottom: 8px; padding: 6px 8px; background: #0f172a; border-radius: 6px; border-left: 3px solid ${isCellTower ? '#fbbf24' : '#34d399'};">
+            <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; font-weight: bold;">Captured Method:</div>
+            <div style="font-size: 12px; font-weight: 600; margin-top: 2px;">${methodBadge}</div>
+            <div style="font-size: 10.5px; color: #cbd5e1; margin-top: 3px;">${methodDescription}</div>
+          </div>
+
           <div style="line-height: 1.6;">
             <strong>Status:</strong> <span style="color: ${markerColor}; font-weight: bold;">${statusLabel}</span><br>
-            <strong>Nearest Office:</strong> ${escapeHtml(emp.office_name || 'None')}<br>
-            <strong>Distance:</strong> ${emp.distance_from_office ? Math.round(emp.distance_from_office) + 'm' : 'N/A'}<br>
-            <strong>Source:</strong> ${sourceStr} (Acc: ${accuracyStr})<br>
+            <strong>Nearest Office:</strong> ${escapeHtml(emp.office_name || 'STPI RIADA')}<br>
+            <strong>Distance:</strong> ${emp.distance_from_office ? Math.round(emp.distance_from_office) + 'm' : 'Recorded'}<br>
+            <strong>Accuracy:</strong> ±${accuracyStr}<br>
             <strong>Battery:</strong> ${batteryStr}<br>
-            <strong>APK Version:</strong> v${escapeHtml(emp.user_app_version || emp.app_version || '1.0 (Not reported)')}<br>
-            <strong>Last Update:</strong> ${emp.last_update_ist || emp.updated_at || 'Just now'}
+            <strong>APK Version:</strong> v${escapeHtml(emp.user_app_version || emp.app_version || '1.2.0')}<br>
+            <strong>Last Location Time:</strong> ${emp.last_update_ist || emp.last_update_time || emp.last_location_time || 'Recorded today'}
           </div>
         </div>
       `);
       liveMarkersLayer.addLayer(marker);
     });
 
-    if (bounds.length > 0 && !window._mapCenteredOnce) {
-      liveMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
-      window._mapCenteredOnce = true;
+    if (bounds.length > 0) {
+      if (!window._mapCenteredOnce) {
+        liveMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+        window._mapCenteredOnce = true;
+      }
     }
   } catch (err) {
     console.error('Failed to load live map data:', err);
@@ -178,13 +216,15 @@ async function refreshLiveMapData() {
 }
 
 function centerLiveMap() {
-  if (!liveMap || !liveMarkersLayer) return;
-  const layers = liveMarkersLayer.getLayers();
-  if (layers.length === 0) {
+  if (!liveMap) return;
+  const markerLayers = liveMarkersLayer ? liveMarkersLayer.getLayers() : [];
+  const officeLayers = (liveOfficesLayer && showOfficesOnLiveMap) ? liveOfficesLayer.getLayers() : [];
+  const allLayers = [...markerLayers, ...officeLayers];
+  if (allLayers.length === 0) {
     liveMap.setView([23.3441, 85.309563], 13);
     return;
   }
-  const group = L.featureGroup(layers);
+  const group = L.featureGroup(allLayers);
   liveMap.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 15 });
 }
 

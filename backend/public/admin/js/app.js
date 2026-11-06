@@ -450,6 +450,11 @@ function renderAttendanceTable(list) {
       reviewBadge = '<span class="badge badge-danger">Rejected</span>';
     }
 
+    const isCell = item.location_source === 'CELL_NETWORK' || item.location_source === 'CELL_TOWER' || ((item.check_in_accuracy || item.distance_from_office) > 100);
+    const methodBadge = isCell
+      ? '<span class="badge badge-warning" style="font-size:10px;">🗼 Cell Tower</span>'
+      : '<span class="badge badge-success" style="font-size:10px;">🛰️ GPS</span>';
+
     return `
       <tr>
         <td>
@@ -461,8 +466,9 @@ function renderAttendanceTable(list) {
         <td>${geofenceBadge}</td>
         <td>${reviewBadge}</td>
         <td>
-          <span class="text-xs">${item.location_source || 'GPS'}</span>
-          ${item.distance_from_office ? `<div class="text-xs text-muted">${Math.round(item.distance_from_office)}m from site</div>` : ''}
+          <div>${methodBadge}</div>
+          ${item.distance_from_office ? `<div class="text-xs text-muted" style="margin-top:2px;">${Math.round(item.distance_from_office)}m from site</div>` : ''}
+          ${item.check_in_accuracy ? `<div class="text-xs text-muted">Acc: ±${Math.round(item.check_in_accuracy)}m</div>` : ''}
         </td>
         <td>${escapeHtml(item.office_name || 'General')}</td>
       </tr>

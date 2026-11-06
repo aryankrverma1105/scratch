@@ -48,8 +48,16 @@ function renderPendingReviewsTable(list) {
     const source = item.location_source || 'GPS';
     const battery = (item.battery_percentage !== null && item.battery_percentage !== undefined) ? `${item.battery_percentage}%` : 'N/A';
     const rawSelfie = item.selfie_path || item.check_in_selfie;
-    const selfieUrl = rawSelfie ? `/api/files/selfies/${rawSelfie.split('/').pop().split('\\').pop()}` : null;
+    const cleanSelfieName = rawSelfie ? rawSelfie.split('/').pop().split('\\').pop() : null;
+    const token = localStorage.getItem('sologix_admin_token') || '';
+    const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+    const selfieUrl = cleanSelfieName ? `/api/files/selfies/${cleanSelfieName}${tokenQuery}` : null;
     const appVer = item.user_app_version || item.app_version;
+
+    const isCellTower = source === 'CELL_NETWORK' || source === 'CELL_TOWER' || ((item.accuracy_meters || item.check_in_accuracy) > 100);
+    const methodBadge = isCellTower
+      ? '<span class="badge badge-warning" style="font-size:10px;">🗼 Cell Tower</span>'
+      : '<span class="badge badge-success" style="font-size:10px;">🛰️ Location Services (GPS)</span>';
 
     return `
       <tr>
@@ -71,13 +79,17 @@ function renderPendingReviewsTable(list) {
         </td>
         <td>
           ${selfieUrl ? `
-            <img src="${selfieUrl}" alt="Selfie" style="width: 44px; height: 44px; border-radius: 6px; object-fit: cover; cursor: pointer; border: 1px solid #334155;"
-                 onclick="openSelfieModal('${selfieUrl}', '${escapeHtml(item.employee_name)}')">
+            <div style="position: relative; width: 44px; height: 44px;">
+              <img src="${selfieUrl}" alt="Selfie" style="width: 44px; height: 44px; border-radius: 6px; object-fit: cover; cursor: pointer; border: 1px solid #334155;"
+                   onclick="openSelfieModal('${selfieUrl}', '${escapeHtml(item.employee_name)}')"
+                   onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+              <div style="display: none; width: 44px; height: 44px; border-radius: 6px; background: #1e293b; border: 1px solid #334155; align-items: center; justify-content: center; font-size: 10px; color: #94a3b8; text-align: center;">📷 Photo</div>
+            </div>
           ` : '<span class="text-xs text-muted">No selfie</span>'}
         </td>
         <td>
           <div class="text-xs">
-            <div><strong>Source:</strong> ${source === 'CELL_NETWORK' || source === 'CELL_TOWER' ? '<span class="badge badge-warning" style="font-size:10px;">Cell Tower</span>' : escapeHtml(source)}</div>
+            <div style="margin-bottom: 3px;"><strong>Method:</strong> ${methodBadge}</div>
             <div><strong>Accuracy:</strong> ${accuracy}</div>
             <div><strong>Battery:</strong> ${battery}</div>
             ${appVer ? `<div style="margin-top:2px;"><span class="badge badge-info" style="font-size:9.5px; font-family:monospace;">APK v${escapeHtml(appVer)}</span></div>` : ''}
@@ -156,7 +168,12 @@ function openSelfieModal(url, name) {
   const modal = document.getElementById('modal-selfie');
   const img = document.getElementById('modal-selfie-img');
   const title = document.getElementById('modal-selfie-title');
-  if (img) img.src = url;
+  if (img) {
+    img.src = url;
+    img.onerror = function() {
+      this.alt = 'Selfie photo could not be loaded from storage';
+    };
+  }
   if (title) title.textContent = `${name} - Check-In Selfie`;
   if (modal) modal.classList.remove('hidden');
 }

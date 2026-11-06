@@ -285,12 +285,21 @@ async function getLiveLocations(req, res) {
     const queryStr = `
       SELECT 
         u.id as user_id,
+        u.id as employee_id,
         u.full_name,
+        u.full_name as employee_name,
         u.email,
         u.department,
         u.phone,
         u.app_version as user_app_version,
         u.device_model,
+        COALESCE(t.latitude, a.check_in_lat) as latitude,
+        COALESCE(t.longitude, a.check_in_lng) as longitude,
+        COALESCE(t.accuracy, a.check_in_accuracy) as accuracy,
+        COALESCE(t.location_source, a.location_source, 'GPS') as location_source,
+        COALESCE(t.battery_percentage, a.battery_percentage) as battery_percentage,
+        COALESCE(t.network_status, a.network_status) as network_status,
+        COALESCE(t.timestamp, a.check_in_time) as last_update_time,
         a.id as attendance_id,
         a.status as attendance_status,
         a.check_in_time,
@@ -315,9 +324,15 @@ async function getLiveLocations(req, res) {
         t.battery_percentage as last_battery_percentage,
         t.network_status as last_network_status,
         t.location_services_enabled as last_location_services_enabled,
-        t.timestamp as last_location_time
+        t.timestamp as last_location_time,
+        CASE WHEN a.status = 'checked_in' THEN 1 ELSE 0 END as is_active_session
       FROM users u
-      LEFT JOIN attendance a ON a.user_id = u.id AND a.status = 'checked_in'
+      LEFT JOIN (
+        SELECT a1.* FROM attendance a1
+        INNER JOIN (
+          SELECT user_id, MAX(id) as max_id FROM attendance GROUP BY user_id
+        ) a_max ON a1.id = a_max.max_id
+      ) a ON a.user_id = u.id
       LEFT JOIN offices o ON a.office_id = o.id
       LEFT JOIN (
         SELECT lt.*
