@@ -208,7 +208,9 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                         ? Icons.warning_rounded
                         : isGpsOff
                             ? Icons.location_off
-                            : Icons.person_pin,
+                            : emp.isCellTower
+                                ? Icons.cell_tower
+                                : Icons.person_pin,
                     color: Colors.white,
                     size: 20,
                   ),
@@ -226,9 +228,13 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                   child: Text(
                     isMocked
                         ? '⚠️ MOCK'
-                        : shortPlace != null
-                            ? '${emp.fullName.split(' ').first} • $shortPlace'
-                            : '${emp.fullName.split(' ').first} • $lastSeenText',
+                        : isGpsOff
+                            ? '${emp.fullName.split(' ').first} • GPS OFF'
+                            : emp.isCellTower
+                                ? '🗼 ${emp.fullName.split(' ').first} • Cell'
+                                : shortPlace != null
+                                    ? '${emp.fullName.split(' ').first} • $shortPlace'
+                                    : '${emp.fullName.split(' ').first} • $lastSeenText',
                     style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -446,28 +452,28 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: _selectedEmployee!.isMocked
-                                ? Colors.deepOrange.withOpacity(0.2)
-                                : _selectedEmployee!.isGpsOff
-                                    ? AppColors.error.withOpacity(0.2)
+                            color: _selectedEmployee!.isGpsOff
+                                ? AppColors.error.withOpacity(0.2)
+                                : _selectedEmployee!.isMocked
+                                    ? Colors.deepOrange.withOpacity(0.2)
                                     : _selectedEmployee!.isWorking
                                         ? AppColors.success.withOpacity(0.2)
                                         : Colors.white10,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
-                            _selectedEmployee!.isMocked
-                                ? '⚠️ FAKE / MOCK GPS'
-                                : _selectedEmployee!.isGpsOff
-                                    ? '⚠️ GPS OFF'
+                            _selectedEmployee!.isGpsOff
+                                ? '⚠️ GPS / LOCATION OFF'
+                                : _selectedEmployee!.isMocked
+                                    ? '⚠️ FAKE / MOCK GPS'
                                     : _selectedEmployee!.isWorking
                                         ? '🟢 On Duty Tracking'
                                         : '⚪ Checked Out',
                             style: TextStyle(
-                              color: _selectedEmployee!.isMocked
-                                  ? Colors.deepOrange
-                                  : _selectedEmployee!.isGpsOff
-                                      ? AppColors.error
+                              color: _selectedEmployee!.isGpsOff
+                                  ? AppColors.error
+                                  : _selectedEmployee!.isMocked
+                                      ? Colors.deepOrange
                                       : _selectedEmployee!.isWorking
                                           ? AppColors.success
                                           : AppColors.textMuted,
@@ -489,6 +495,28 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                           ),
                       ],
                     ),
+                    if (_selectedEmployee!.isGpsOff)
+                      Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withOpacity(0.15),
+                          border: Border.all(color: AppColors.error.withOpacity(0.5)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.location_off, color: AppColors.error, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '⚠️ Employee turned OFF device Location / GPS at ${_formatLastSeen(_selectedEmployee!.lastLocationTime)}. Showing last known coordinates.',
+                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     const SizedBox(height: 10),
                     // Exact Location / Place Name Container
                     Container(
@@ -543,6 +571,81 @@ class _AdminLiveMapScreenState extends State<AdminLiveMapScreen> {
                               ],
                             ),
                           ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Telemetry, Method & APK Version Grid
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black26,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Location Method:', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                              Text(
+                                _selectedEmployee!.isCellTower
+                                    ? '🗼 Cell Tower (Network)'
+                                    : '🛰️ GPS Satellites',
+                                style: TextStyle(
+                                  color: _selectedEmployee!.isCellTower ? Colors.amberAccent : AppColors.info,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Installed APK:', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.blueGrey.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  'v${_selectedEmployee!.appVersion ?? '1.2.0'}',
+                                  style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_selectedEmployee!.batteryPercentage != null || _selectedEmployee!.networkStatus != null) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Battery & Network:', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                                Text(
+                                  '${_selectedEmployee!.batteryPercentage != null ? "🔋 ${_selectedEmployee!.batteryPercentage}%" : ""}${_selectedEmployee!.networkStatus != null ? " • ${_selectedEmployee!.networkStatus}" : ""}',
+                                  style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (_selectedEmployee!.officeName != null) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Assigned Office:', style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
+                                Text(
+                                  '${_selectedEmployee!.officeName}${_selectedEmployee!.distanceFromOffice != null ? " (${_selectedEmployee!.distanceFromOffice!.toInt()}m)" : ""}',
+                                  style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),

@@ -291,6 +291,7 @@ async function getLiveLocations(req, res) {
         u.email,
         u.department,
         u.phone,
+        u.app_version,
         u.app_version as user_app_version,
         u.device_model,
         COALESCE(t.latitude, a.check_in_lat) as latitude,
@@ -318,13 +319,24 @@ async function getLiveLocations(req, res) {
         t.longitude as last_longitude,
         t.accuracy as last_accuracy,
         t.speed as last_speed,
-        t.is_gps_off as last_is_gps_off,
+        CASE 
+          WHEN (SELECT COUNT(1) FROM gps_alerts ga WHERE ga.user_id = u.id AND ga.alert_type IN ('GPS_DISABLED', 'LOCATION_PERMISSION_REVOKED', 'NO_SIGNAL') AND ga.resolved = 0) > 0 THEN 1
+          WHEN t.is_gps_off = 1 THEN 1
+          WHEN t.location_services_enabled = 0 THEN 1
+          ELSE 0 
+        END as is_gps_off,
+        CASE 
+          WHEN (SELECT COUNT(1) FROM gps_alerts ga WHERE ga.user_id = u.id AND ga.alert_type IN ('GPS_DISABLED', 'LOCATION_PERMISSION_REVOKED', 'NO_SIGNAL') AND ga.resolved = 0) > 0 THEN 1
+          WHEN t.is_gps_off = 1 THEN 1
+          WHEN t.location_services_enabled = 0 THEN 1
+          ELSE 0 
+        END as last_is_gps_off,
         t.is_mocked as last_is_mocked,
-        t.location_source as last_location_source,
-        t.battery_percentage as last_battery_percentage,
-        t.network_status as last_network_status,
+        COALESCE(t.location_source, a.location_source, 'GPS') as last_location_source,
+        COALESCE(t.battery_percentage, a.battery_percentage) as last_battery_percentage,
+        COALESCE(t.network_status, a.network_status) as last_network_status,
         t.location_services_enabled as last_location_services_enabled,
-        t.timestamp as last_location_time,
+        COALESCE(t.timestamp, a.check_in_time) as last_location_time,
         CASE WHEN a.status = 'checked_in' THEN 1 ELSE 0 END as is_active_session
       FROM users u
       LEFT JOIN (

@@ -14,6 +14,12 @@ class LiveEmployeeLocation {
   final double? lastSpeed;
   final bool isGpsOff;
   final DateTime? lastLocationTime;
+  final String? locationSource;
+  final String? appVersion;
+  final int? batteryPercentage;
+  final String? networkStatus;
+  final String? officeName;
+  final double? distanceFromOffice;
 
   LiveEmployeeLocation({
     required this.userId,
@@ -32,16 +38,40 @@ class LiveEmployeeLocation {
     this.isGpsOff = false,
     this.isMocked = false,
     this.lastLocationTime,
+    this.locationSource,
+    this.appVersion,
+    this.batteryPercentage,
+    this.networkStatus,
+    this.officeName,
+    this.distanceFromOffice,
   });
 
   final bool isMocked;
   bool get isWorking => attendanceStatus == 'checked_in';
   bool get hasValidLocation => lastLatitude != null && lastLongitude != null;
+  bool get isCellTower => locationSource == 'CELL_NETWORK' || locationSource == 'CELL_TOWER' || (lastAccuracy != null && lastAccuracy! > 100);
 
   factory LiveEmployeeLocation.fromJson(Map<String, dynamic> json) {
+    final lat = (json['last_latitude'] as num?)?.toDouble() ??
+        (json['latitude'] as num?)?.toDouble() ??
+        (json['check_in_lat'] as num?)?.toDouble();
+    final lng = (json['last_longitude'] as num?)?.toDouble() ??
+        (json['longitude'] as num?)?.toDouble() ??
+        (json['check_in_lng'] as num?)?.toDouble();
+    final acc = (json['last_accuracy'] as num?)?.toDouble() ??
+        (json['accuracy'] as num?)?.toDouble();
+    final spd = (json['last_speed'] as num?)?.toDouble();
+
+    final isGpsOff = json['is_gps_off'] == 1 ||
+        json['is_gps_off'] == true ||
+        json['last_is_gps_off'] == 1 ||
+        json['last_is_gps_off'] == true ||
+        json['last_location_services_enabled'] == 0 ||
+        json['last_location_services_enabled'] == false;
+
     return LiveEmployeeLocation(
       userId: json['user_id'] is int ? json['user_id'] : int.tryParse(json['user_id'].toString()) ?? 0,
-      fullName: json['full_name'] ?? 'Employee',
+      fullName: json['full_name'] ?? json['employee_name'] ?? 'Employee',
       email: json['email'] ?? '',
       department: json['department'],
       phone: json['phone'],
@@ -49,15 +79,21 @@ class LiveEmployeeLocation {
       attendanceStatus: json['attendance_status'],
       checkInTime: json['check_in_time'] != null ? DateTime.tryParse(json['check_in_time'].toString())?.toLocal() : null,
       checkInAddress: json['check_in_address'],
-      lastLatitude: (json['last_latitude'] as num?)?.toDouble(),
-      lastLongitude: (json['last_longitude'] as num?)?.toDouble(),
-      lastAccuracy: (json['last_accuracy'] as num?)?.toDouble(),
-      lastSpeed: (json['last_speed'] as num?)?.toDouble(),
-      isGpsOff: json['last_is_gps_off'] == 1 || json['last_is_gps_off'] == true,
+      lastLatitude: lat,
+      lastLongitude: lng,
+      lastAccuracy: acc,
+      lastSpeed: spd,
+      isGpsOff: isGpsOff,
       isMocked: json['last_is_mocked'] == 1 || json['last_is_mocked'] == true,
-      lastLocationTime: json['last_location_time'] != null
-          ? DateTime.tryParse(json['last_location_time'].toString())?.toLocal()
+      lastLocationTime: (json['last_location_time'] ?? json['last_update_time']) != null
+          ? DateTime.tryParse((json['last_location_time'] ?? json['last_update_time']).toString())?.toLocal()
           : null,
+      locationSource: json['last_location_source']?.toString() ?? json['location_source']?.toString(),
+      appVersion: json['user_app_version']?.toString() ?? json['app_version']?.toString(),
+      batteryPercentage: (json['last_battery_percentage'] as num?)?.toInt() ?? (json['battery_percentage'] as num?)?.toInt(),
+      networkStatus: json['last_network_status']?.toString() ?? json['network_status']?.toString(),
+      officeName: json['office_name']?.toString(),
+      distanceFromOffice: (json['distance_from_office'] as num?)?.toDouble(),
     );
   }
 }
