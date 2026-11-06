@@ -168,35 +168,37 @@ class LocationService {
       }
     } catch (_) {}
 
-    // 4. If no fresh last-known position, acquire via getCurrentPosition with 10s timeLimit
+    // 4. Multi-Stage Location Resolver: GPS Satellites -> Cell Tower / Network Fallback -> Last Known
     if (acquiredPos == null) {
       try {
+        // Stage 1: Attempt Satellite GPS fix (8 second limit)
         acquiredPos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
-            timeLimit: Duration(seconds: 10),
+            timeLimit: Duration(seconds: 8),
           ),
         );
-        locationSource = 'GPS';
-      } on TimeoutException {
-        // Timeout occurred: try fallback to any last-known position
-        final fallback = await Geolocator.getLastKnownPosition();
-        if (fallback != null) {
-          acquiredPos = fallback;
-          locationSource = 'LAST_KNOWN';
-        } else if (isCheckOut) {
-          // Never block check-out on poor fix if any position can be constructed
-          throw GpsTimeoutException('GPS signal timed out. Please step near a window or outdoors to complete check-out.');
-        } else {
-          throw GpsTimeoutException('GPS signal timed out. Please check your signal and step into an open area.');
-        }
+        locationSource = (acquiredPos.accuracy > 100) ? 'CELL_NETWORK' : 'GPS';
       } catch (e) {
-        final fallback = await Geolocator.getLastKnownPosition();
-        if (fallback != null) {
-          acquiredPos = fallback;
-          locationSource = 'FUSED';
-        } else {
-          throw GpsTimeoutException('Unable to acquire GPS fix: ${e.toString()}');
+        // Stage 2: Satellite fix unavailable (e.g. indoors / dense structures) -> Fallback to Cell Tower / Network
+        debugPrint('Satellite GPS unavailable ($e), acquiring Cell Tower / Network fix...');
+        try {
+          acquiredPos = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.medium,
+              timeLimit: Duration(seconds: 7),
+            ),
+          );
+          locationSource = 'CELL_NETWORK';
+        } catch (cellErr) {
+          // Stage 3: Fallback to last known device position
+          final fallback = await Geolocator.getLastKnownPosition();
+          if (fallback != null) {
+            acquiredPos = fallback;
+            locationSource = fallback.accuracy > 100 ? 'CELL_NETWORK' : 'LAST_KNOWN';
+          } else {
+            throw GpsTimeoutException('Unable to acquire GPS or Cell Tower location fix. Please step near a window or outdoors.');
+          }
         }
       }
     }

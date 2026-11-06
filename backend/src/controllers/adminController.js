@@ -19,7 +19,8 @@ function isRootSuperAdmin(user) {
 async function listUsers(req, res) {
   try {
     const users = await db.query(
-      `SELECT id, email, username, full_name, role, department, phone, is_active, created_at 
+      `SELECT id, email, username, full_name, role, department, phone, is_active, 
+              app_version, app_build_number, device_model, device_os, last_active_at, created_at 
        FROM users ORDER BY created_at DESC`
     );
     return res.json({ users, employees: users });
@@ -288,6 +289,8 @@ async function getLiveLocations(req, res) {
         u.email,
         u.department,
         u.phone,
+        u.app_version as user_app_version,
+        u.device_model,
         a.id as attendance_id,
         a.status as attendance_status,
         a.check_in_time,
@@ -384,6 +387,7 @@ async function getAllAttendance(req, res) {
     const { date, userId, search, limit = 100 } = req.query;
     let sql = `
       SELECT a.*, u.full_name, u.full_name as employee_name, u.email, u.department, a.user_id as employee_id,
+             u.app_version as user_app_version, u.device_model,
              o.office_name
       FROM attendance a
       JOIN users u ON a.user_id = u.id

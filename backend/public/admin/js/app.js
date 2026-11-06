@@ -492,28 +492,40 @@ function renderEmployeesTable(list) {
   if (!tbody) return;
 
   if (list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center p-4 text-muted">No employees found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center p-4 text-muted">No employees found.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = list.map(emp => `
-    <tr>
-      <td>#${emp.id}</td>
-      <td><strong>${escapeHtml(emp.full_name)}</strong></td>
-      <td>
-        <div>${escapeHtml(emp.email)}</div>
-        <div class="text-xs text-muted">${escapeHtml(emp.phone_number || '')}</div>
-      </td>
-      <td>${escapeHtml(emp.department || 'General')}</td>
-      <td><span class="badge badge-info">${emp.role}</span></td>
-      <td>${escapeHtml(emp.office_name || 'All Offices')}</td>
-      <td>
-        <span class="badge ${emp.is_active ? 'badge-success' : 'badge-danger'}">
-          ${emp.is_active ? 'Active' : 'Inactive'}
-        </span>
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = list.map(emp => {
+    let apkBadge = '<span class="badge badge-neutral">v1.0 (Not reported)</span>';
+    if (emp.app_version) {
+      apkBadge = `<span class="badge badge-info" style="font-family: monospace;">v${escapeHtml(emp.app_version)}${emp.app_build_number ? ` (${escapeHtml(emp.app_build_number)})` : ''}</span>`;
+    }
+
+    const deviceText = emp.device_model || emp.device_os
+      ? `<div><strong>${escapeHtml(emp.device_model || 'Android')}</strong></div><div class="text-xs text-muted">${escapeHtml(emp.device_os || '')}</div>`
+      : '<span class="text-xs text-muted">N/A</span>';
+
+    return `
+      <tr>
+        <td>#${emp.id}</td>
+        <td><strong>${escapeHtml(emp.full_name)}</strong></td>
+        <td>
+          <div>${escapeHtml(emp.email)}</div>
+          <div class="text-xs text-muted">${escapeHtml(emp.phone || emp.phone_number || '')}</div>
+        </td>
+        <td>${escapeHtml(emp.department || 'General')}</td>
+        <td><span class="badge badge-info">${emp.role}</span></td>
+        <td>${apkBadge}</td>
+        <td>${deviceText}</td>
+        <td>
+          <span class="badge ${emp.is_active ? 'badge-success' : 'badge-danger'}">
+            ${emp.is_active ? 'Active' : 'Inactive'}
+          </span>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 // ==========================================================================

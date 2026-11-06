@@ -11,13 +11,14 @@ async function listPendingReviews(req, res) {
     const { search, office_id, department, date } = req.query;
 
     let sql = `
-      SELECT a.id, a.user_id, a.date, a.check_in_time, a.check_in_lat, a.check_in_lng,
-             a.check_in_accuracy, a.check_in_address, a.check_in_selfie, a.check_out_time,
+      SELECT a.id, a.user_id, a.user_id as employee_id, a.date, a.check_in_time, a.check_in_lat, a.check_in_lng,
+             a.check_in_accuracy, a.check_in_accuracy as accuracy_meters, a.check_in_address,
+             a.check_in_selfie, a.check_in_selfie as selfie_path, a.check_out_time,
              a.status, a.geofence_status, a.review_status, a.review_reason, a.office_id,
              a.distance_from_office, a.location_source, a.outside_reason, a.battery_percentage,
-             a.network_status, a.created_at,
-             u.full_name as employee_name, u.email as employee_email, u.department as employee_department,
-             u.phone as employee_phone,
+             a.network_status, a.app_version, a.created_at,
+             u.full_name as employee_name, u.email as employee_email, u.department, u.department as employee_department,
+             u.phone as employee_phone, u.app_version as user_app_version, u.device_model,
              o.office_name, o.address as office_address, o.radius_meters as office_radius,
              e.distance_from_office as calculated_distance, e.geofence_result
       FROM attendance a
@@ -88,27 +89,47 @@ async function approveReview(req, res) {
     const approvalNote = note && note.trim() ? note.trim() : 'Approved by administrator';
 
     // 1. Update attendance table
-    await db.run(
-      `UPDATE attendance SET
-         review_status = 'approved',
-         review_reason = ?,
-         reviewed_by = ?,
-         reviewed_at = ?,
-         geofence_status = 'approved'
-       WHERE id = ?`,
-      [approvalNote, adminId, nowIso, attendanceId]
-    );
+    try {
+      await db.run(
+        `UPDATE attendance SET
+           review_status = 'approved',
+           review_reason = ?,
+           reviewed_by = ?,
+           reviewed_at = ?,
+           geofence_status = 'approved'
+         WHERE id = ?`,
+        [approvalNote, adminId, nowIso, attendanceId]
+      );
+    } catch (updateErr) {
+      if (updateErr.message && updateErr.message.includes('reviewed_at')) {
+        await db.run("ALTER TABLE attendance ADD COLUMN reviewed_at DATETIME").catch(() => {});
+        await db.run(
+          `UPDATE attendance SET
+             review_status = 'approved',
+             review_reason = ?,
+             reviewed_by = ?,
+             reviewed_at = ?,
+             geofence_status = 'approved'
+           WHERE id = ?`,
+          [approvalNote, adminId, nowIso, attendanceId]
+        );
+      } else {
+        throw updateErr;
+      }
+    }
 
     // 2. Update geofence_attendance_evidence if exists
-    await db.run(
-      `UPDATE geofence_attendance_evidence SET
-         review_status = 'approved',
-         review_reason = ?,
-         reviewed_by = ?,
-         reviewed_at = ?
-       WHERE attendance_id = ?`,
-      [approvalNote, adminId, nowIso, attendanceId]
-    );
+    try {
+      await db.run(
+        `UPDATE geofence_attendance_evidence SET
+           review_status = 'approved',
+           review_reason = ?,
+           reviewed_by = ?,
+           reviewed_at = ?
+         WHERE attendance_id = ?`,
+        [approvalNote, adminId, nowIso, attendanceId]
+      );
+    } catch (_) {}
 
     // 3. Insert review history audit
     await db.run(
@@ -192,28 +213,49 @@ async function rejectReview(req, res) {
     const reasonClean = rejection_reason.trim();
 
     // 1. Update attendance table
-    await db.run(
-      `UPDATE attendance SET
-         review_status = 'rejected',
-         status = 'rejected',
-         review_reason = ?,
-         reviewed_by = ?,
-         reviewed_at = ?,
-         geofence_status = 'rejected'
-       WHERE id = ?`,
-      [reasonClean, adminId, nowIso, attendanceId]
-    );
+    try {
+      await db.run(
+        `UPDATE attendance SET
+           review_status = 'rejected',
+           status = 'rejected',
+           review_reason = ?,
+           reviewed_by = ?,
+           reviewed_at = ?,
+           geofence_status = 'rejected'
+         WHERE id = ?`,
+        [reasonClean, adminId, nowIso, attendanceId]
+      );
+    } catch (updateErr) {
+      if (updateErr.message && updateErr.message.includes('reviewed_at')) {
+        await db.run("ALTER TABLE attendance ADD COLUMN reviewed_at DATETIME").catch(() => {});
+        await db.run(
+          `UPDATE attendance SET
+             review_status = 'rejected',
+             status = 'rejected',
+             review_reason = ?,
+             reviewed_by = ?,
+             reviewed_at = ?,
+             geofence_status = 'rejected'
+           WHERE id = ?`,
+          [reasonClean, adminId, nowIso, attendanceId]
+        );
+      } else {
+        throw updateErr;
+      }
+    }
 
     // 2. Update geofence_attendance_evidence
-    await db.run(
-      `UPDATE geofence_attendance_evidence SET
-         review_status = 'rejected',
-         review_reason = ?,
-         reviewed_by = ?,
-         reviewed_at = ?
-       WHERE attendance_id = ?`,
-      [reasonClean, adminId, nowIso, attendanceId]
-    );
+    try {
+      await db.run(
+        `UPDATE geofence_attendance_evidence SET
+           review_status = 'rejected',
+           review_reason = ?,
+           reviewed_by = ?,
+           reviewed_at = ?
+         WHERE attendance_id = ?`,
+        [reasonClean, adminId, nowIso, attendanceId]
+      );
+    } catch (_) {}
 
     // 3. Insert review history audit
     await db.run(

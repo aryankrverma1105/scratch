@@ -20,6 +20,9 @@ class ApiService {
     defaultValue: 'http://34.180.17.0:5050',
   );
 
+  static const String appVersion = '1.2.0';
+  static const String appBuildNumber = '16';
+
   final _secureStorage = const FlutterSecureStorage();
   late Dio _dio;
   String _baseUrl = defaultBaseUrl;
@@ -246,6 +249,9 @@ class ApiService {
         () => _dio.post('/api/auth/login', data: {
           'identifier': identifier,
           'password': password,
+          'app_version': appVersion,
+          'app_build_number': appBuildNumber,
+          'device_os': Platform.isAndroid ? 'Android' : 'iOS',
         }),
       );
 
@@ -329,6 +335,7 @@ class ApiService {
       if (outsideReason != null && outsideReason.isNotEmpty) {
         formMap['outside_reason'] = outsideReason;
       }
+      formMap['app_version'] = appVersion;
       final formData = FormData.fromMap(formMap);
 
       final response = await _dio.post('/api/attendance/check-in', data: formData);

@@ -1098,8 +1098,7 @@ function initDatabase() {
         try { await run("ALTER TABLE attendance ADD COLUMN review_status VARCHAR(30) DEFAULT 'none'"); } catch (_) {}
         try { await run("ALTER TABLE attendance ADD COLUMN review_reason TEXT"); } catch (_) {}
         try { await run("ALTER TABLE attendance ADD COLUMN reviewed_by INTEGER REFERENCES users(id)"); } catch (_) {}
-        try { await run(`ALTER TABLE attendance ADD COLUMN reviewed_at ${tsDef}`); } catch (_) {}
-        try { await run(`ALTER TABLE attendance ADD COLUMN reviewed_at ${tsDef}`); } catch (_) {}
+        try { await run(isPostgres ? 'ALTER TABLE attendance ADD COLUMN reviewed_at TIMESTAMP' : 'ALTER TABLE attendance ADD COLUMN reviewed_at DATETIME'); } catch (_) {}
         try { await run("ALTER TABLE attendance ADD COLUMN office_id INTEGER REFERENCES offices(id)"); } catch (_) {}
         try { await run("ALTER TABLE attendance ADD COLUMN distance_from_office REAL"); } catch (_) {}
         try { await run("ALTER TABLE attendance ADD COLUMN location_source VARCHAR(30) DEFAULT 'GPS'"); } catch (_) {}
@@ -1157,6 +1156,27 @@ function initDatabase() {
         try { await run("ALTER TABLE location_tracks ADD COLUMN location_services_enabled INTEGER DEFAULT 1"); } catch (_) {}
       },
     },
+    {
+      version: 13,
+      name: 'add_reviewed_at_safeguard_and_app_version_telemetry',
+      up: async () => {
+        // Guarantee reviewed_at column exists in attendance table
+        try {
+          await run(isPostgres ? 'ALTER TABLE attendance ADD COLUMN reviewed_at TIMESTAMP' : 'ALTER TABLE attendance ADD COLUMN reviewed_at DATETIME');
+        } catch (_) {}
+
+        // Add APK version & device telemetry tracking to users
+        try { await run("ALTER TABLE users ADD COLUMN app_version VARCHAR(50)"); } catch (_) {}
+        try { await run("ALTER TABLE users ADD COLUMN app_build_number VARCHAR(50)"); } catch (_) {}
+        try { await run("ALTER TABLE users ADD COLUMN device_model VARCHAR(100)"); } catch (_) {}
+        try { await run("ALTER TABLE users ADD COLUMN device_os VARCHAR(50)"); } catch (_) {}
+        try { await run("ALTER TABLE users ADD COLUMN last_active_at DATETIME"); } catch (_) {}
+
+        // Add app_version to attendance and location_tracks
+        try { await run("ALTER TABLE attendance ADD COLUMN app_version VARCHAR(50)"); } catch (_) {}
+        try { await run("ALTER TABLE location_tracks ADD COLUMN app_version VARCHAR(50)"); } catch (_) {}
+      },
+    },
   ];
 
   for (const m of migrations) {
@@ -1177,6 +1197,16 @@ function initDatabase() {
       }
     }
   }
+
+  // Idempotent column safeguard to guarantee critical columns exist regardless of migration state
+  try { await run(isPostgres ? 'ALTER TABLE attendance ADD COLUMN reviewed_at TIMESTAMP' : 'ALTER TABLE attendance ADD COLUMN reviewed_at DATETIME'); } catch (_) {}
+  try { await run("ALTER TABLE users ADD COLUMN app_version VARCHAR(50)"); } catch (_) {}
+  try { await run("ALTER TABLE users ADD COLUMN app_build_number VARCHAR(50)"); } catch (_) {}
+  try { await run("ALTER TABLE users ADD COLUMN device_model VARCHAR(100)"); } catch (_) {}
+  try { await run("ALTER TABLE users ADD COLUMN device_os VARCHAR(50)"); } catch (_) {}
+  try { await run("ALTER TABLE users ADD COLUMN last_active_at DATETIME"); } catch (_) {}
+  try { await run("ALTER TABLE attendance ADD COLUMN app_version VARCHAR(50)"); } catch (_) {}
+  try { await run("ALTER TABLE location_tracks ADD COLUMN app_version VARCHAR(50)"); } catch (_) {}
 
   // Seed Admin on first run with random password if no admin exists
   const existingAdmin = await get("SELECT id FROM users WHERE role = 'admin' LIMIT 1");

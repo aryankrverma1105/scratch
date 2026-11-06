@@ -44,10 +44,12 @@ function renderPendingReviewsTable(list) {
   tbody.innerHTML = list.map(item => {
     const distanceMeters = item.distance_from_office ? Math.round(item.distance_from_office) : 'Unknown';
     const radiusMeters = item.office_radius ? item.office_radius : 100;
-    const accuracy = item.accuracy_meters ? `${Math.round(item.accuracy_meters)}m` : 'N/A';
+    const accuracy = (item.accuracy_meters || item.check_in_accuracy) ? `${Math.round(item.accuracy_meters || item.check_in_accuracy)}m` : 'N/A';
     const source = item.location_source || 'GPS';
-    const battery = item.battery_percentage !== null ? `${item.battery_percentage}%` : 'N/A';
-    const selfieUrl = item.selfie_path ? `/api/files/selfies/${item.selfie_path.split('/').pop().split('\\').pop()}` : null;
+    const battery = (item.battery_percentage !== null && item.battery_percentage !== undefined) ? `${item.battery_percentage}%` : 'N/A';
+    const rawSelfie = item.selfie_path || item.check_in_selfie;
+    const selfieUrl = rawSelfie ? `/api/files/selfies/${rawSelfie.split('/').pop().split('\\').pop()}` : null;
+    const appVer = item.user_app_version || item.app_version;
 
     return `
       <tr>
@@ -55,7 +57,7 @@ function renderPendingReviewsTable(list) {
           <div class="d-flex align-center gap-2">
             <div>
               <strong>${escapeHtml(item.employee_name || 'Employee')}</strong>
-              <div class="text-xs text-muted">ID: ${item.employee_id} | ${escapeHtml(item.department || 'General')}</div>
+              <div class="text-xs text-muted">ID: ${item.employee_id || item.user_id || 'N/A'} | ${escapeHtml(item.department || item.employee_department || 'General')}</div>
             </div>
           </div>
         </td>
@@ -75,9 +77,10 @@ function renderPendingReviewsTable(list) {
         </td>
         <td>
           <div class="text-xs">
-            <div><strong>Source:</strong> ${source}</div>
+            <div><strong>Source:</strong> ${source === 'CELL_NETWORK' || source === 'CELL_TOWER' ? '<span class="badge badge-warning" style="font-size:10px;">Cell Tower</span>' : escapeHtml(source)}</div>
             <div><strong>Accuracy:</strong> ${accuracy}</div>
             <div><strong>Battery:</strong> ${battery}</div>
+            ${appVer ? `<div style="margin-top:2px;"><span class="badge badge-info" style="font-size:9.5px; font-family:monospace;">APK v${escapeHtml(appVer)}</span></div>` : ''}
           </div>
         </td>
         <td>

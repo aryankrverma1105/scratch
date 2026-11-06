@@ -107,6 +107,7 @@ class AttendanceReviewModel {
   final String reviewStatus;
   final String? reviewReason;
   final String? outsideReason;
+  final String? appVersion;
   final String? createdAt;
 
   AttendanceReviewModel({
@@ -130,6 +131,7 @@ class AttendanceReviewModel {
     required this.reviewStatus,
     this.reviewReason,
     this.outsideReason,
+    this.appVersion,
     this.createdAt,
   });
 
@@ -140,25 +142,30 @@ class AttendanceReviewModel {
   factory AttendanceReviewModel.fromJson(Map<String, dynamic> json) {
     return AttendanceReviewModel(
       id: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0,
-      employeeId: json['employee_id'] is int ? json['employee_id'] : int.tryParse(json['employee_id'].toString()) ?? 0,
+      employeeId: json['employee_id'] is int
+          ? json['employee_id']
+          : int.tryParse((json['employee_id'] ?? json['user_id'] ?? '0').toString()) ?? 0,
       employeeName: json['employee_name'] ?? json['full_name'],
-      department: json['department'],
+      department: json['employee_department'] ?? json['department'],
       checkInTime: json['check_in_time'],
       checkInTimeIst: json['check_in_time_ist'],
       submittedLatitude: json['submitted_latitude'] != null ? double.tryParse(json['submitted_latitude'].toString()) : null,
       submittedLongitude: json['submitted_longitude'] != null ? double.tryParse(json['submitted_longitude'].toString()) : null,
       distanceFromOffice: json['distance_from_office'] != null ? double.tryParse(json['distance_from_office'].toString()) : null,
-      accuracyMeters: json['accuracy_meters'] != null ? double.tryParse(json['accuracy_meters'].toString()) : null,
+      accuracyMeters: (json['accuracy_meters'] ?? json['check_in_accuracy']) != null
+          ? double.tryParse((json['accuracy_meters'] ?? json['check_in_accuracy']).toString())
+          : null,
       locationSource: json['location_source'],
       batteryPercentage: json['battery_percentage'] != null ? int.tryParse(json['battery_percentage'].toString()) : null,
       networkStatus: json['network_status'],
       officeId: json['office_id'] != null ? int.tryParse(json['office_id'].toString()) : null,
       officeName: json['office_name'],
       officeRadius: json['office_radius'] != null ? double.tryParse(json['office_radius'].toString()) : null,
-      selfiePath: json['selfie_path'],
+      selfiePath: json['selfie_path'] ?? json['check_in_selfie'],
       reviewStatus: json['review_status'] ?? 'pending_review',
       reviewReason: json['review_reason'],
       outsideReason: json['outside_reason'],
+      appVersion: json['user_app_version'] ?? json['app_version'],
       createdAt: json['created_at'],
     );
   }

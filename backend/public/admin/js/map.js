@@ -160,6 +160,7 @@ async function refreshLiveMapData() {
             <strong>Distance:</strong> ${emp.distance_from_office ? Math.round(emp.distance_from_office) + 'm' : 'N/A'}<br>
             <strong>Source:</strong> ${sourceStr} (Acc: ${accuracyStr})<br>
             <strong>Battery:</strong> ${batteryStr}<br>
+            <strong>APK Version:</strong> v${escapeHtml(emp.user_app_version || emp.app_version || '1.0 (Not reported)')}<br>
             <strong>Last Update:</strong> ${emp.last_update_ist || emp.updated_at || 'Just now'}
           </div>
         </div>

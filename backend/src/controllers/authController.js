@@ -6,7 +6,7 @@ const { getCompanyDate } = require('../utils/timeUtils');
 
 async function login(req, res) {
   try {
-    const { identifier, password } = req.body; // username or email
+    const { identifier, password, app_version, app_build_number, device_model, device_os } = req.body; // username or email
 
     if (!identifier || !password) {
       return res.status(400).json({ error: 'Email/Username and password are required' });
@@ -29,6 +29,24 @@ async function login(req, res) {
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+
+    // Save app version and device telemetry if provided
+    try {
+      if (app_version || device_model) {
+        await db.run(
+          `UPDATE users SET 
+             app_version = COALESCE(?, app_version),
+             app_build_number = COALESCE(?, app_build_number),
+             device_model = COALESCE(?, device_model),
+             device_os = COALESCE(?, device_os),
+             last_active_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [app_version || null, app_build_number || null, device_model || null, device_os || null, user.id]
+        );
+      } else {
+        await db.run('UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+      }
+    } catch (_) {}
 
     const token = jwt.sign(
       {

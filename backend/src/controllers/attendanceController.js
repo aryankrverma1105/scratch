@@ -55,6 +55,7 @@ async function checkIn(req, res) {
       battery_percentage = null,
       network_status = null,
       outside_reason = null,
+      app_version = null,
     } = req.body;
 
     if (latitude === undefined || longitude === undefined) {
@@ -117,9 +118,14 @@ async function checkIn(req, res) {
     const accNum = accuracy !== undefined && accuracy !== null && accuracy !== '' ? parseFloat(accuracy) : null;
     const isMockedVal = is_mocked === true || is_mocked === 'true' || is_mocked === 1 || is_mocked === '1' ? 1 : 0;
     const batteryNum = battery_percentage !== undefined && battery_percentage !== null ? parseFloat(battery_percentage) : null;
-    const locSource = ['GPS', 'NETWORK', 'FUSED', 'LAST_KNOWN'].includes(String(location_source).toUpperCase())
+    const locSource = ['GPS', 'NETWORK', 'CELL_NETWORK', 'CELL_TOWER', 'FUSED', 'LAST_KNOWN', 'WIFI_NETWORK'].includes(String(location_source).toUpperCase())
       ? String(location_source).toUpperCase()
       : 'GPS';
+
+    // Update user app_version & telemetry if passed
+    if (app_version) {
+      db.run("UPDATE users SET app_version = ?, last_active_at = CURRENT_TIMESTAMP WHERE id = ?", [app_version, userId]).catch(() => {});
+    }
 
     // 1. Geofence evaluation against active offices
     const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
@@ -145,33 +151,71 @@ async function checkIn(req, res) {
     const geofenceStatus = isInside ? 'inside' : 'outside';
     const reviewStatus = isInside ? 'approved' : 'pending_review';
 
-    const result = await db.run(
-      `INSERT INTO attendance (
-        user_id, date, check_in_time, check_in_lat, check_in_lng, check_in_accuracy,
-        check_in_is_mocked, check_in_address, check_in_selfie, status,
-        geofence_status, review_status, office_id, distance_from_office,
-        location_source, battery_percentage, network_status, outside_reason
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_in', ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        userId,
-        today,
-        nowIso,
-        latNum,
-        lngNum,
-        accNum,
-        isMockedVal,
-        address || 'Recorded location',
-        selfieFilename,
-        geofenceStatus,
-        reviewStatus,
-        officeId,
-        distMeters,
-        locSource,
-        batteryNum,
-        network_status ? String(network_status).substring(0, 50) : null,
-        outside_reason ? String(outside_reason).trim() : null,
-      ]
-    );
+    let result;
+    try {
+      result = await db.run(
+        `INSERT INTO attendance (
+          user_id, date, check_in_time, check_in_lat, check_in_lng, check_in_accuracy,
+          check_in_is_mocked, check_in_address, check_in_selfie, status,
+          geofence_status, review_status, office_id, distance_from_office,
+          location_source, battery_percentage, network_status, outside_reason, app_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_in', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          today,
+          nowIso,
+          latNum,
+          lngNum,
+          accNum,
+          isMockedVal,
+          address || 'Recorded location',
+          selfieFilename,
+          geofenceStatus,
+          reviewStatus,
+          officeId,
+          distMeters,
+          locSource,
+          batteryNum,
+          network_status ? String(network_status).substring(0, 50) : null,
+          outside_reason ? String(outside_reason).trim() : null,
+          app_version ? String(app_version).trim() : null,
+        ]
+      );
+    } catch (insertErr) {
+      if (insertErr.message && insertErr.message.includes('app_version')) {
+        await db.run("ALTER TABLE attendance ADD COLUMN app_version VARCHAR(50)").catch(() => {});
+        result = await db.run(
+          `INSERT INTO attendance (
+            user_id, date, check_in_time, check_in_lat, check_in_lng, check_in_accuracy,
+            check_in_is_mocked, check_in_address, check_in_selfie, status,
+            geofence_status, review_status, office_id, distance_from_office,
+            location_source, battery_percentage, network_status, outside_reason, app_version
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_in', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,
+            today,
+            nowIso,
+            latNum,
+            lngNum,
+            accNum,
+            isMockedVal,
+            address || 'Recorded location',
+            selfieFilename,
+            geofenceStatus,
+            reviewStatus,
+            officeId,
+            distMeters,
+            locSource,
+            batteryNum,
+            network_status ? String(network_status).substring(0, 50) : null,
+            outside_reason ? String(outside_reason).trim() : null,
+            app_version ? String(app_version).trim() : null,
+          ]
+        );
+      } else {
+        throw insertErr;
+      }
+    }
 
     const attendanceId = result.lastID;
 

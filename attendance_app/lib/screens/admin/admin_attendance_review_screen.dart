@@ -285,7 +285,7 @@ class _AdminAttendanceReviewScreenState extends State<AdminAttendanceReviewScree
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
-                                            'ID: ${r.employeeId} • ${r.department ?? 'General'}',
+                                            'ID: #${r.employeeId > 0 ? r.employeeId : 'N/A'} • ${r.department ?? 'General'}',
                                             style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                                           ),
                                           const SizedBox(height: 4),
@@ -339,7 +339,7 @@ class _AdminAttendanceReviewScreenState extends State<AdminAttendanceReviewScree
                                         children: [
                                           const Text('Location Telemetry:', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
                                           Text(
-                                            '${r.locationSource ?? 'GPS'} • Acc: ${r.accuracyMeters != null ? '${r.accuracyMeters!.toInt()}m' : 'N/A'}${r.batteryPercentage != null ? ' • Bat: ${r.batteryPercentage}%' : ''}',
+                                            '${r.locationSource == 'CELL_NETWORK' || r.locationSource == 'CELL_TOWER' ? 'Cell Tower' : (r.locationSource ?? 'GPS')} • Acc: ${r.accuracyMeters != null ? '${r.accuracyMeters!.toInt()}m' : 'N/A'}${r.batteryPercentage != null ? ' • Bat: ${r.batteryPercentage}%' : ''}${r.appVersion != null ? ' • APK: v${r.appVersion}' : ''}',
                                             style: const TextStyle(color: Colors.white70, fontSize: 11),
                                           ),
                                         ],

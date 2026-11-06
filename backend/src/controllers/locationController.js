@@ -7,6 +7,12 @@ async function recordLocation(req, res) {
     const userId = req.user.id;
     const body = req.body;
 
+    if (body.app_version) {
+      db.run("UPDATE users SET app_version = ?, last_active_at = CURRENT_TIMESTAMP WHERE id = ?", [body.app_version, userId]).catch(() => {});
+    } else {
+      db.run("UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?", [userId]).catch(() => {});
+    }
+
     // Check if user currently has an active check-in
     const activeAttendance = await db.get(
       "SELECT id FROM attendance WHERE user_id = ? AND status = 'checked_in' ORDER BY id DESC LIMIT 1",
@@ -257,6 +263,12 @@ async function recordLocationBatch(req, res) {
   try {
     const userId = req.user.id;
     const body = req.body;
+
+    if (body.app_version) {
+      db.run("UPDATE users SET app_version = ?, last_active_at = CURRENT_TIMESTAMP WHERE id = ?", [body.app_version, userId]).catch(() => {});
+    } else {
+      db.run("UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?", [userId]).catch(() => {});
+    }
     const points = Array.isArray(body.points) ? body.points : body.locations;
 
     if (!Array.isArray(points) || points.length === 0) {
