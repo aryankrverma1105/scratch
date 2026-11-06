@@ -296,10 +296,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                 ),
                                 const SizedBox(width: 14),
-                                const Column(
+                                Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
+                                    const Text(
                                       'Sologix Energy',
                                       style: TextStyle(
                                         color: Colors.white,
@@ -307,13 +307,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         fontSize: 16,
                                       ),
                                     ),
-                                    SizedBox(height: 2),
+                                    const SizedBox(height: 2),
                                     Text(
-                                      'Energizing Naturally • v1.0.0',
-                                      style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                                      'Energizing Naturally • v${ApiService.appVersion} (${ApiService.appBuildNumber})',
+                                      style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                                     ),
-                                    SizedBox(height: 4),
-                                    Text(
+                                    const SizedBox(height: 4),
+                                    const Text(
                                       'Design and Developed By Aryan Kumar Verma',
                                       style: TextStyle(color: AppColors.info, fontSize: 11, fontWeight: FontWeight.w500),
                                     ),
