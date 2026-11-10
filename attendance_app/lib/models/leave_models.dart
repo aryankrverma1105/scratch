@@ -95,6 +95,11 @@ class MonthlyAttendanceSummaryModel {
   final int sundaysCount;
   final int holidaysCount;
   final List<String> presentDates;
+  final bool isSalaried;
+  final String? salaryType;
+  final int cumulativePresentDaysYear;
+  final int requiredPresentDaysYear;
+  final bool is26DayRequirementMet;
 
   MonthlyAttendanceSummaryModel({
     required this.userId,
@@ -111,6 +116,11 @@ class MonthlyAttendanceSummaryModel {
     this.sundaysCount = 0,
     this.holidaysCount = 0,
     this.presentDates = const [],
+    this.isSalaried = false,
+    this.salaryType,
+    this.cumulativePresentDaysYear = 0,
+    this.requiredPresentDaysYear = 26,
+    this.is26DayRequirementMet = false,
   });
 
   factory MonthlyAttendanceSummaryModel.fromJson(Map<String, dynamic> json) {
@@ -122,7 +132,7 @@ class MonthlyAttendanceSummaryModel {
 
     return MonthlyAttendanceSummaryModel(
       userId: json['userId'] is int ? json['userId'] : int.tryParse(json['userId']?.toString() ?? '0') ?? 0,
-      userName: json['userName']?.toString() ?? 'Employee',
+      userName: json['userName']?.toString() ?? json['employeeName']?.toString() ?? 'Employee',
       yearMonth: json['yearMonth']?.toString() ?? '',
       monthName: json['monthName']?.toString() ?? '',
       isCurrentMonth: json['isCurrentMonth'] == true,
@@ -135,6 +145,11 @@ class MonthlyAttendanceSummaryModel {
       sundaysCount: (json['sundaysCount'] as num?)?.toInt() ?? 0,
       holidaysCount: (json['holidaysCount'] as num?)?.toInt() ?? 0,
       presentDates: dates,
+      isSalaried: json['isSalaried'] == true || json['is_salaried'] == true || json['salaryType'] == 'fixed_monthly',
+      salaryType: json['salaryType']?.toString() ?? json['salary_type']?.toString(),
+      cumulativePresentDaysYear: (json['cumulativePresentDaysYear'] as num?)?.toInt() ?? (json['cumulativePresentDays'] as num?)?.toInt() ?? 0,
+      requiredPresentDaysYear: (json['requiredPresentDaysYear'] as num?)?.toInt() ?? 26,
+      is26DayRequirementMet: json['is26DayRequirementMet'] == true,
     );
   }
 }
