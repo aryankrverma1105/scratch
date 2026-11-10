@@ -151,7 +151,39 @@ describe('Cell Network Fallback, Monthly Attendance Summary & Salaried Annual Le
       assert.ok(typeof summary.attendancePercentage === 'number');
     });
 
-    it('should return all employees monthly summary with search filtering', async () => {
+    it('should not count pending attendance towards present days', async () => {
+      const pendingDate = '2026-11-05';
+      await db.run(
+        `INSERT INTO attendance (user_id, date, check_in_time, check_in_lat, check_in_lng, status, review_status)
+         VALUES (?, ?, '2026-11-05 04:00:00Z', 23.3441, 85.3095, 'present', 'pending_review')`,
+        [salariedUserId, pendingDate]
+      );
+
+      const summary = await attendanceSummaryService.getEmployeeMonthlySummary(salariedUserId, '2026-11');
+      assert.ok(!summary.presentDates.includes(pendingDate), 'Pending attendance must NOT be counted as present');
+    });
+
+    it('should not count rejected attendance towards present days', async () => {
+      const rejectedDate = '2026-11-06';
+      await db.run(
+        `INSERT INTO attendance (user_id, date, check_in_time, check_in_lat, check_in_lng, status, review_status)
+         VALUES (?, ?, '2026-11-06 04:00:00Z', 23.3441, 85.3095, 'rejected', 'rejected')`,
+        [salariedUserId, rejectedDate]
+      );
+
+      const summary = await attendanceSummaryService.getEmployeeMonthlySummary(salariedUserId, '2026-11');
+      assert.ok(!summary.presentDates.includes(rejectedDate), 'Rejected attendance must NOT be counted as present');
+    });
+
+    it('should return isSalaried: false and 0 present days when daily wage employee queries monthly summary', async () => {
+      const dwSummary = await attendanceSummaryService.getEmployeeMonthlySummary(dailyWageUserId, '2026-11');
+      assert.strictEqual(dwSummary.isSalaried, false, 'Daily wage employee must have isSalaried = false');
+      assert.strictEqual(dwSummary.presentDays, 0);
+      assert.strictEqual(dwSummary.totalWorkingDays, 0);
+      assert.ok(dwSummary.message.includes('salaried employees'));
+    });
+
+    it('should return all employees monthly summary with search filtering strictly for salaried staff', async () => {
       const allSummary = await attendanceSummaryService.getAllEmployeesMonthlySummary('2026-11', 'Salaried Test Emp');
 
       assert.strictEqual(allSummary.success, true);
@@ -160,6 +192,11 @@ describe('Cell Network Fallback, Monthly Attendance Summary & Salaried Annual Le
       const emp = allSummary.employees.find(e => e.userId === salariedUserId);
       assert.ok(emp, 'Should find the salaried test employee');
       assert.strictEqual(emp.presentDays, 1);
+      assert.strictEqual(emp.isSalaried, true);
+
+      // Verify daily-wage user is completely excluded from the salaried monthly summary
+      const dwInAll = allSummary.employees.find(e => e.userId === dailyWageUserId);
+      assert.strictEqual(dwInAll, undefined, 'Daily-wage staff must be excluded from salaried monthly summary');
     });
   });
 
@@ -184,15 +221,78 @@ describe('Cell Network Fallback, Monthly Attendance Summary & Salaried Annual Le
       assert.ok(bal.message.toLowerCase().includes('salaried'));
     });
 
-    it('should enforce 26 cumulative present days requirement for salaried employees in calendar year', async () => {
-      // Salaried employee currently has only 1 present day in 2026
-      const calc = await leaveService.calculateLeaveRequest(salariedUserId, '2026-11-10', '2026-11-11');
+    it('should mark salaried employee with 25 present days as NOT eligible for two monthly leaves', async () => {
+      // Clear 2026 attendance for salaried test employee to control count exactly
+      await db.run('DELETE FROM attendance WHERE user_id = ? AND date >= "2026-01-01" AND date <= "2026-12-31"', [salariedUserId]);
 
-      assert.strictEqual(calc.isSalaried, true);
+      // Insert exactly 25 unique present dates in 2026
+      for (let day = 1; day <= 25; day++) {
+        const dStr = `2026-01-${String(day).padStart(2, '0')}`;
+        await db.run(
+          `INSERT INTO attendance (user_id, date, check_in_time, check_in_lat, check_in_lng, status, review_status)
+           VALUES (?, ?, '2026-01-01 04:00:00Z', 23.3441, 85.3095, 'present', 'approved')`,
+          [salariedUserId, dStr]
+        );
+      }
+
+      // Check balance / eligibility
+      const bal = await leaveService.getUserLeaveBalance(salariedUserId, '2026');
+      assert.strictEqual(bal.isSalaried, true);
+      assert.strictEqual(bal.cumulativePresentDays, 25);
+      assert.strictEqual(bal.is26DayRequirementMet, false, '25 present days must NOT meet 26-day requirement');
+
+      // Attempt leave calculation: must fail eligibility
+      const calc = await leaveService.calculateLeaveRequest(salariedUserId, '2026-02-02', '2026-02-03');
       assert.strictEqual(calc.isEligible, false);
-      assert.strictEqual(calc.cumulativePresentDays, 1);
-      assert.strictEqual(calc.requiredPresentDays, 26);
+      assert.strictEqual(calc.cumulativePresentDays, 25);
       assert.ok(calc.ineligibleReason.includes('26 valid present days'));
+    });
+
+    it('should mark salaried employee with 26 present days as ELIGIBLE for two monthly leaves', async () => {
+      // Insert the 26th unique approved present date in 2026
+      await db.run(
+        `INSERT INTO attendance (user_id, date, check_in_time, check_in_lat, check_in_lng, status, review_status)
+         VALUES (?, '2026-01-26', '2026-01-26 04:00:00Z', 23.3441, 85.3095, 'present', 'approved')`,
+        [salariedUserId]
+      );
+
+      // Check balance / eligibility
+      const bal = await leaveService.getUserLeaveBalance(salariedUserId, '2026');
+      assert.strictEqual(bal.isSalaried, true);
+      assert.strictEqual(bal.cumulativePresentDays, 26);
+      assert.strictEqual(bal.is26DayRequirementMet, true, '26 present days must meet 26-day requirement');
+
+      // Grant initial 2-day accrual for 2026-01
+      await db.run(
+        `UPDATE leave_balances SET accrued = 2, balance = 2 WHERE user_id = ? AND leave_year = '2026'`,
+        [salariedUserId]
+      );
+
+      // Now calculate leave request for 1 day: must succeed
+      const calc = await leaveService.calculateLeaveRequest(salariedUserId, '2026-02-02', '2026-02-02');
+      assert.strictEqual(calc.isEligible, true);
+      assert.strictEqual(calc.cumulativePresentDays, 26);
+      assert.strictEqual(calc.daysDeducted, 1);
+    });
+
+    it('should reset eligibility counter to 0 when a new leave year starts on January 1', async () => {
+      // For year 2027, user has 0 attendance records
+      const bal2027 = await leaveService.getUserLeaveBalance(salariedUserId, '2027');
+      assert.strictEqual(bal2027.cumulativePresentDays, 0, 'New year starts with 0 cumulative present days');
+      assert.strictEqual(bal2027.is26DayRequirementMet, false);
+      assert.strictEqual(bal2027.leaveYear, '2027');
+    });
+
+    it('should preserve historical year-wise records when employee or admin selects historical years', async () => {
+      // Verify 2026 still has 26 present days and active records
+      const bal2026 = await leaveService.getUserLeaveBalance(salariedUserId, '2026');
+      assert.strictEqual(bal2026.cumulativePresentDays, 26, '2026 history remains permanently preserved');
+
+      // Verify available years includes historical years
+      const years = await leaveService.getAvailableLeaveYears();
+      const yearCodes = years.map(y => y.code);
+      assert.ok(yearCodes.includes('2026'));
+      assert.ok(yearCodes.includes('2025'));
     });
 
     it('should return available annual leave calendar years', async () => {

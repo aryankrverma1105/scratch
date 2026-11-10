@@ -185,6 +185,8 @@ async function adminGetSummaries(req, res) {
         u.role,
         u.department,
         u.is_active,
+        COALESCE(esc.salary_type, 'daily_wage') as salary_type,
+        CASE WHEN esc.salary_type = 'fixed_monthly' THEN 1 ELSE 0 END as is_salaried,
         COALESCE(b.accrued, 0) as earned_accrued,
         COALESCE(b.used, 0) as earned_used,
         COALESCE(b.balance, 0) as earned_balance,
@@ -193,6 +195,7 @@ async function adminGetSummaries(req, res) {
         COALESCE(s.unpaid_absence_count, 0) as monthly_unpaid_absences,
         COALESCE(s.threshold_exceeded, 0) as threshold_exceeded
       FROM users u
+      LEFT JOIN employee_salary_configs esc ON esc.user_id = u.id
       LEFT JOIN leave_balances b ON b.user_id = u.id AND b.leave_year = ?
       LEFT JOIN monthly_attendance_summaries s ON s.user_id = u.id AND s.month = ?
       WHERE u.is_active = 1

@@ -41,10 +41,51 @@ async function getEmployeeMonthlySummary(userId, yearMonth) {
   );
   if (!user) throw new Error('User not found');
 
+  // Verify salary configuration (Salaried vs Daily-Wage)
+  const salConfig = await db.get(
+    'SELECT salary_type FROM employee_salary_configs WHERE user_id = ?',
+    [userId]
+  );
+  const salaryType = salConfig?.salary_type || 'daily_wage';
+  const isSalaried = salaryType === 'fixed_monthly';
+
   // Month date range
   const startDate = `${targetMonth}-01`;
   const daysInMonth = new Date(yearNum, monthNum, 0).getDate();
   const endDateOfMonth = `${targetMonth}-${String(daysInMonth).padStart(2, '0')}`;
+
+  // If daily wage employee: monthly salaried summary does not apply
+  if (!isSalaried) {
+    return {
+      success: true,
+      userId,
+      employeeName: user.full_name,
+      userName: user.full_name,
+      department: user.department || 'General',
+      isSalaried: false,
+      salaryType,
+      month: targetMonth,
+      yearMonth: targetMonth,
+      monthName,
+      presentDays: 0,
+      workingDays: 0,
+      totalWorkingDays: 0,
+      absentDays: 0,
+      approvedLeaveDays: 0,
+      attendancePercentage: 0.0,
+      totalCalendarDays: daysInMonth,
+      elapsedCalendarDays: 0,
+      sundaysCount: 0,
+      holidaysCount: 0,
+      presentDates: [],
+      cumulativePresentDaysYear: 0,
+      requiredPresentDaysYear: 26,
+      is26DayRequirementMet: false,
+      isFutureMonth: false,
+      dailyBreakdown: [],
+      message: 'Monthly attendance summary is applicable only for salaried employees. Daily-wage employees are compensated per daily shift.',
+    };
+  }
 
   const currentMonthStr = todayStr.substring(0, 7);
   let elapsedEndDate;
@@ -182,12 +223,28 @@ async function getEmployeeMonthlySummary(userId, yearMonth) {
     ? Number(((presentDays / workingDays) * 100).toFixed(1))
     : 100.0;
 
+  // Annual cumulative unique present days for salaried leave calendar (1 Jan - 31 Dec)
+  const leaveYearStart = `${yearNum}-01-01`;
+  const leaveYearEnd = `${yearNum}-12-31`;
+  const cumulativeRow = await db.get(
+    `SELECT COUNT(DISTINCT date) as count
+     FROM attendance
+     WHERE user_id = ? AND date >= ? AND date <= ?
+       AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))
+       AND (review_status IS NULL OR review_status NOT IN ('pending_review', 'rejected'))`,
+    [userId, leaveYearStart, leaveYearEnd]
+  );
+  const cumulativePresentDaysYear = cumulativeRow?.count || 0;
+  const is26DayRequirementMet = cumulativePresentDaysYear >= 26;
+
   return {
     success: true,
     userId,
     employeeName: user.full_name,
     userName: user.full_name,
     department: user.department || 'General',
+    isSalaried: true,
+    salaryType: 'fixed_monthly',
     month: targetMonth,
     yearMonth: targetMonth,
     monthName,
@@ -202,6 +259,9 @@ async function getEmployeeMonthlySummary(userId, yearMonth) {
     sundaysCount,
     holidaysCount,
     presentDates: Array.from(presentDatesSet).sort(),
+    cumulativePresentDaysYear,
+    requiredPresentDaysYear: 26,
+    is26DayRequirementMet,
     isFutureMonth: false,
     dailyBreakdown,
   };
@@ -209,6 +269,7 @@ async function getEmployeeMonthlySummary(userId, yearMonth) {
 
 /**
  * Get monthly attendance summary for all active employees (Admin overview)
+ * Strictly filters to SALARIED employees as requested (daily-wage excluded from salaried monthly summary)
  * @param {string} [yearMonth] e.g. '2026-11'
  * @param {string} [search] search term
  */
@@ -216,21 +277,25 @@ async function getAllEmployeesMonthlySummary(yearMonth, search = '') {
   const todayStr = getCompanyDate();
   const targetMonth = yearMonth || todayStr.substring(0, 7);
 
-  let sql = "SELECT id, full_name, email, department, role FROM users WHERE role = 'employee' AND is_active = 1";
+  let sql = `
+    SELECT u.id, u.full_name, u.email, u.department, u.role, esc.salary_type
+    FROM users u
+    JOIN employee_salary_configs esc ON esc.user_id = u.id AND esc.salary_type = 'fixed_monthly'
+    WHERE u.role = 'employee' AND u.is_active = 1
+  `;
   const params = [];
   if (search && search.trim()) {
     const term = `%${search.trim()}%`;
-    sql += " AND (full_name LIKE ? OR email LIKE ? OR CAST(id AS TEXT) LIKE ?)";
+    sql += " AND (u.full_name LIKE ? OR u.email LIKE ? OR CAST(u.id AS TEXT) LIKE ?)";
     params.push(term, term, term);
   }
-  sql += " ORDER BY full_name ASC";
+  sql += " ORDER BY u.full_name ASC";
 
   const employees = await db.query(sql, params);
 
   const summaries = [];
   for (const emp of employees) {
     const sum = await getEmployeeMonthlySummary(emp.id, targetMonth);
-    const salConfig = await db.get('SELECT salary_type FROM employee_salary_configs WHERE user_id = ?', [emp.id]);
 
     summaries.push({
       userId: emp.id,
@@ -239,7 +304,8 @@ async function getAllEmployeesMonthlySummary(yearMonth, search = '') {
       fullName: emp.full_name,
       department: emp.department || 'General',
       email: emp.email,
-      salaryType: salConfig?.salary_type || 'daily_wage',
+      salaryType: 'fixed_monthly',
+      isSalaried: true,
       month: targetMonth,
       yearMonth: targetMonth,
       monthName: sum.monthName,
@@ -248,6 +314,9 @@ async function getAllEmployeesMonthlySummary(yearMonth, search = '') {
       absentDays: sum.absentDays,
       approvedLeaveDays: sum.approvedLeaveDays,
       attendancePercentage: sum.attendancePercentage,
+      cumulativePresentDaysYear: sum.cumulativePresentDaysYear,
+      requiredPresentDaysYear: sum.requiredPresentDaysYear,
+      is26DayRequirementMet: sum.is26DayRequirementMet,
     });
   }
 

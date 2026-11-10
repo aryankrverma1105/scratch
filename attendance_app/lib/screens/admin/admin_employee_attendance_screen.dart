@@ -4,6 +4,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
 import '../../models/attendance_model.dart';
 import '../../models/user_model.dart';
+import '../../models/leave_models.dart';
 import '../../widgets/searchable_employee_picker.dart';
 import 'admin_route_history_screen.dart';
 
@@ -31,6 +32,7 @@ class _AdminEmployeeAttendanceScreenState
   List<UserModel> _allEmployees = [];
   UserModel? _currentEmployee;
   List<AttendanceRecord> _records = [];
+  MonthlyAttendanceSummaryModel? _monthlySummary;
   bool _isLoading = true;
   String _statusFilter = 'ALL'; // 'ALL', 'COMPLETED', 'ACTIVE', 'AUTO'
   DateTime? _filterDate;
@@ -74,7 +76,10 @@ class _AdminEmployeeAttendanceScreenState
   Future<void> _loadRecords() async {
     final empId = _currentEmployee?.id ?? widget.employeeId;
     if (empId == null) {
-      setState(() => _records = []);
+      setState(() {
+        _records = [];
+        _monthlySummary = null;
+      });
       return;
     }
 
@@ -90,6 +95,17 @@ class _AdminEmployeeAttendanceScreenState
       }
     } catch (e) {
       debugPrint('Error loading records: $e');
+    }
+
+    try {
+      final summary = await ApiService().adminGetEmployeeMonthlySummary(empId);
+      if (mounted) {
+        setState(() {
+          _monthlySummary = summary;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading employee monthly summary: $e');
     }
   }
 
@@ -548,9 +564,34 @@ class _AdminEmployeeAttendanceScreenState
                                   ],
                                 ),
                                 const SizedBox(height: 3),
-                                Text(
-                                  employeeDept,
-                                  style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                                Row(
+                                  children: [
+                                    Text(
+                                      employeeDept,
+                                      style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                                    ),
+                                    if (_monthlySummary != null) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: _monthlySummary!.isSalaried ? Colors.blue.withOpacity(0.2) : Colors.amber.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: _monthlySummary!.isSalaried ? Colors.blue.withOpacity(0.4) : Colors.amber.withOpacity(0.4),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          _monthlySummary!.isSalaried ? 'SALARIED' : 'DAILY WAGE',
+                                          style: TextStyle(
+                                            color: _monthlySummary!.isSalaried ? Colors.blueAccent : Colors.amberAccent,
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ],
                             ),
@@ -561,37 +602,182 @@ class _AdminEmployeeAttendanceScreenState
                       const Divider(color: Colors.white10, height: 1),
                       const SizedBox(height: 12),
 
-                      // Metrics Row
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildMetricTile(
-                              icon: Icons.calendar_today,
-                              label: 'Total Shifts',
-                              value: '$totalShifts',
-                              color: AppColors.info,
+                      // Metrics Row: 4 tiles for Salaried (including Present Month), 3 tiles for Daily Wage
+                      if (_monthlySummary?.isSalaried == true) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildMetricTile(
+                                icon: Icons.calendar_today,
+                                label: 'Total Shifts',
+                                value: '$totalShifts',
+                                color: AppColors.info,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildMetricTile(
+                                icon: Icons.timelapse,
+                                label: 'Total Hours',
+                                value: totalHoursStr,
+                                color: AppColors.success,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildMetricTile(
+                                icon: Icons.event_available,
+                                label: 'Present (Month)',
+                                value: '${_monthlySummary?.presentDays ?? 0}d',
+                                color: Colors.cyanAccent,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildMetricTile(
+                                icon: Icons.photo_camera_front,
+                                label: 'Selfies',
+                                value: '${_records.where((r) => r.checkInSelfie != null).length}',
+                                color: Colors.amber,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        // Salaried Annual Leave Calendar (Jan 1 - Dec 31) with 26-Day Requirement
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: (_monthlySummary?.is26DayRequirementMet ?? false)
+                                ? AppColors.success.withOpacity(0.12)
+                                : Colors.blue.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: (_monthlySummary?.is26DayRequirementMet ?? false)
+                                  ? AppColors.success.withOpacity(0.4)
+                                  : Colors.blue.withOpacity(0.3),
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _buildMetricTile(
-                              icon: Icons.timelapse,
-                              label: 'Total Hours',
-                              value: totalHoursStr,
-                              color: AppColors.success,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        (_monthlySummary?.is26DayRequirementMet ?? false)
+                                            ? Icons.verified
+                                            : Icons.timelapse,
+                                        color: (_monthlySummary?.is26DayRequirementMet ?? false)
+                                            ? AppColors.success
+                                            : Colors.blueAccent,
+                                        size: 16,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Annual Leave Calendar (${DateTime.now().year}: 1 Jan – 31 Dec)',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 11.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    '${_monthlySummary?.cumulativePresentDaysYear ?? 0} / 26 days',
+                                    style: TextStyle(
+                                      color: (_monthlySummary?.is26DayRequirementMet ?? false)
+                                          ? AppColors.success
+                                          : Colors.white70,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: LinearProgressIndicator(
+                                  value: ((_monthlySummary?.cumulativePresentDaysYear ?? 0) / 26.0).clamp(0.0, 1.0),
+                                  backgroundColor: Colors.white12,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    (_monthlySummary?.is26DayRequirementMet ?? false)
+                                        ? AppColors.success
+                                        : Colors.blueAccent,
+                                  ),
+                                  minHeight: 5,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                (_monthlySummary?.is26DayRequirementMet ?? false)
+                                    ? '✅ 26-Day Requirement Met: 2 monthly leaves unlocked.'
+                                    : '⚠️ 2 monthly leaves allowed only after 26 days present attendance from 1 Jan (${26 - (_monthlySummary?.cumulativePresentDaysYear ?? 0)} days left).',
+                                style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _buildMetricTile(
-                              icon: Icons.photo_camera_front,
-                              label: 'Selfies Verified',
-                              value: '${_records.where((r) => r.checkInSelfie != null).length}',
-                              color: Colors.amber,
+                        ),
+                      ] else ...[
+                        // Daily Wage Employee: strictly 3 tiles, no salaried leave calendar
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildMetricTile(
+                                icon: Icons.calendar_today,
+                                label: 'Total Shifts',
+                                value: '$totalShifts',
+                                color: AppColors.info,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _buildMetricTile(
+                                icon: Icons.timelapse,
+                                label: 'Total Hours',
+                                value: totalHoursStr,
+                                color: AppColors.success,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _buildMetricTile(
+                                icon: Icons.photo_camera_front,
+                                label: 'Selfies Verified',
+                                value: '${_records.where((r) => r.checkInSelfie != null).length}',
+                                color: Colors.amber,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_monthlySummary != null && _monthlySummary!.isSalaried == false) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade900.withOpacity(0.18),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.amber.shade700.withOpacity(0.35)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.info_outline, color: Colors.amberAccent, size: 14),
+                                SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Daily Wage Staff: Paid per approved shift • Salaried monthly summary & leave calendar not applicable',
+                                    style: TextStyle(color: Colors.amberAccent, fontSize: 10.5),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
-                      ),
+                      ],
                     ],
                   ),
                 ),

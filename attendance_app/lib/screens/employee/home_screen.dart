@@ -951,123 +951,180 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
 
-                        // Monthly Employee Attendance Summary Card (Requirement Part 2)
-                        const SizedBox(height: 20),
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: Colors.white12),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black38,
-                                blurRadius: 12,
-                                spreadRadius: 2,
+                        // Monthly Employee Attendance Summary Card (Salaried Employees ONLY)
+                        if (_monthlySummary?.isSalaried == true) ...[
+                          const SizedBox(height: 20),
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.info.withOpacity(0.2),
-                                          borderRadius: BorderRadius.circular(10),
-                                        ),
-                                        child: const Icon(Icons.calendar_month, color: AppColors.info, size: 20),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            _monthlySummary?.monthName ?? DateFormat('MMMM yyyy').format(DateTime.now()),
-                                            style: const TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(color: Colors.white12),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.black38,
+                                  blurRadius: 12,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.info.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(10),
                                           ),
+                                          child: const Icon(Icons.calendar_month, color: AppColors.info, size: 20),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              _monthlySummary?.monthName ?? DateFormat('MMMM yyyy').format(DateTime.now()),
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            const Text(
+                                              'Monthly Attendance Summary (Salaried)',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: AppColors.textMuted,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.refresh, color: AppColors.textMuted, size: 18),
+                                      onPressed: () async {
+                                        final s = await ApiService().getMonthlyAttendanceSummary().catchError((_) => null);
+                                        if (mounted && s != null) {
+                                          setState(() => _monthlySummary = s);
+                                        }
+                                      },
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                // 4 Key Metrics Grid
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildSummaryMetric(
+                                        title: 'Present Days',
+                                        value: '${_monthlySummary?.presentDays ?? 0} Days',
+                                        color: AppColors.success,
+                                        icon: Icons.check_circle_outline,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _buildSummaryMetric(
+                                        title: 'Working Days',
+                                        value: '${_monthlySummary?.totalWorkingDays ?? 0} Days',
+                                        color: AppColors.info,
+                                        icon: Icons.work_outline,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildSummaryMetric(
+                                        title: 'Absent Days',
+                                        value: '${_monthlySummary?.absentDays ?? 0} Days',
+                                        color: (_monthlySummary?.absentDays ?? 0) > 0 ? AppColors.error : AppColors.textMuted,
+                                        icon: Icons.cancel_outlined,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _buildSummaryMetric(
+                                        title: 'Attendance %',
+                                        value: '${(_monthlySummary?.attendancePercentage ?? 0.0).toStringAsFixed(1)}%',
+                                        color: (_monthlySummary?.attendancePercentage ?? 0.0) >= 80 ? Colors.purpleAccent : Colors.amberAccent,
+                                        icon: Icons.pie_chart_outline,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                // 26-Day Cumulative Present Days Leave Calendar Progress
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: (_monthlySummary?.is26DayRequirementMet ?? false)
+                                        ? AppColors.success.withOpacity(0.12)
+                                        : Colors.blue.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: (_monthlySummary?.is26DayRequirementMet ?? false)
+                                          ? AppColors.success.withOpacity(0.3)
+                                          : Colors.blue.withOpacity(0.25),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
                                           const Text(
-                                            'Monthly Attendance Summary',
+                                            'Annual Leave Entitlement (2 leaves/mo)',
+                                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                          ),
+                                          Text(
+                                            '${_monthlySummary?.cumulativePresentDaysYear ?? 0} / 26 days',
                                             style: TextStyle(
+                                              color: (_monthlySummary?.is26DayRequirementMet ?? false) ? AppColors.success : Colors.white70,
                                               fontSize: 11,
-                                              color: AppColors.textMuted,
+                                              fontWeight: FontWeight.bold,
                                             ),
                                           ),
                                         ],
                                       ),
+                                      const SizedBox(height: 6),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(4),
+                                        child: LinearProgressIndicator(
+                                          value: ((_monthlySummary?.cumulativePresentDaysYear ?? 0) / 26.0).clamp(0.0, 1.0),
+                                          backgroundColor: Colors.white12,
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                            (_monthlySummary?.is26DayRequirementMet ?? false) ? AppColors.success : Colors.blueAccent,
+                                          ),
+                                          minHeight: 4,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        (_monthlySummary?.is26DayRequirementMet ?? false)
+                                            ? '✅ 26-day attendance completed. 2 monthly leaves unlocked for ${DateTime.now().year}.'
+                                            : '⚠️ Requires 26 unique present days from 1 Jan (${26 - (_monthlySummary?.cumulativePresentDaysYear ?? 0)} days remaining).',
+                                        style: const TextStyle(color: AppColors.textMuted, fontSize: 9.5),
+                                      ),
                                     ],
                                   ),
-                                  IconButton(
-                                    icon: const Icon(Icons.refresh, color: AppColors.textMuted, size: 18),
-                                    onPressed: () async {
-                                      final s = await ApiService().getMonthlyAttendanceSummary().catchError((_) => null);
-                                      if (mounted && s != null) {
-                                        setState(() => _monthlySummary = s);
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              // 4 Key Metrics Grid
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _buildSummaryMetric(
-                                      title: 'Present Days',
-                                      value: '${_monthlySummary?.presentDays ?? 0} Days',
-                                      color: AppColors.success,
-                                      icon: Icons.check_circle_outline,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _buildSummaryMetric(
-                                      title: 'Working Days',
-                                      value: '${_monthlySummary?.totalWorkingDays ?? 0} Days',
-                                      color: AppColors.info,
-                                      icon: Icons.work_outline,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _buildSummaryMetric(
-                                      title: 'Absent Days',
-                                      value: '${_monthlySummary?.absentDays ?? 0} Days',
-                                      color: (_monthlySummary?.absentDays ?? 0) > 0 ? AppColors.error : AppColors.textMuted,
-                                      icon: Icons.cancel_outlined,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: _buildSummaryMetric(
-                                      title: 'Attendance %',
-                                      value: '${(_monthlySummary?.attendancePercentage ?? 0.0).toStringAsFixed(1)}%',
-                                      color: (_monthlySummary?.attendancePercentage ?? 0.0) >= 80 ? Colors.purpleAccent : Colors.amberAccent,
-                                      icon: Icons.pie_chart_outline,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (_monthlySummary != null) ...[
-                                const SizedBox(height: 12),
+                                ),
+                                const SizedBox(height: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                   decoration: BoxDecoration(
@@ -1089,9 +1146,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                               ],
-                            ],
+                            ),
                           ),
-                        ),
+                        ],
 
                         // Leave Management System Portal Card (Available for both Employees & Admins)
                         const SizedBox(height: 20),

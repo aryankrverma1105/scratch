@@ -146,10 +146,14 @@ class AdminEmployeeMonthlySummaryModel {
   final String? department;
   final String? role;
   final String? salaryType;
+  final bool isSalaried;
   final int presentDays;
   final int workingDays;
   final int absentDays;
   final double attendancePercentage;
+  final int cumulativePresentDaysYear;
+  final int requiredPresentDaysYear;
+  final bool is26DayRequirementMet;
 
   AdminEmployeeMonthlySummaryModel({
     required this.userId,
@@ -158,10 +162,14 @@ class AdminEmployeeMonthlySummaryModel {
     this.department,
     this.role,
     this.salaryType,
+    this.isSalaried = false,
     required this.presentDays,
     required this.workingDays,
     required this.absentDays,
     required this.attendancePercentage,
+    this.cumulativePresentDaysYear = 0,
+    this.requiredPresentDaysYear = 26,
+    this.is26DayRequirementMet = false,
   });
 
   factory AdminEmployeeMonthlySummaryModel.fromJson(Map<String, dynamic> json) {
@@ -172,10 +180,14 @@ class AdminEmployeeMonthlySummaryModel {
       department: json['department']?.toString(),
       role: json['role']?.toString(),
       salaryType: json['salaryType']?.toString(),
+      isSalaried: json['isSalaried'] == true || json['salaryType'] == 'fixed_monthly',
       presentDays: (json['presentDays'] as num?)?.toInt() ?? 0,
       workingDays: (json['workingDays'] as num?)?.toInt() ?? 0,
       absentDays: (json['absentDays'] as num?)?.toInt() ?? 0,
       attendancePercentage: (json['attendancePercentage'] as num?)?.toDouble() ?? 0.0,
+      cumulativePresentDaysYear: (json['cumulativePresentDaysYear'] as num?)?.toInt() ?? 0,
+      requiredPresentDaysYear: (json['requiredPresentDaysYear'] as num?)?.toInt() ?? 26,
+      is26DayRequirementMet: json['is26DayRequirementMet'] == true,
     );
   }
 }

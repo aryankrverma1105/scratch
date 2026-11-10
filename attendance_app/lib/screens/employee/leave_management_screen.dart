@@ -513,42 +513,43 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                     ),
                     Row(
                       children: [
-                        // Year Selector Dropdown
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.white24),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value: _availableYears.any((y) => y.code == _selectedYear) ? _selectedYear : null,
-                              hint: Text(_selectedYear, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                              dropdownColor: AppColors.cardDark,
-                              icon: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
-                              items: (_availableYears.isNotEmpty ? _availableYears : [
-                                LeaveYearModel(code: '2026', name: '2026'),
-                                LeaveYearModel(code: '2025', name: '2025'),
-                                LeaveYearModel(code: '2024', name: '2024'),
-                              ]).map((y) {
-                                return DropdownMenuItem<String>(
-                                  value: y.code,
-                                  child: Text(
-                                    y.name,
-                                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-                                  ),
-                                );
-                              }).toList(),
-                              onChanged: (newYear) {
-                                if (newYear != null && newYear != _selectedYear) {
-                                  setState(() => _selectedYear = newYear);
-                                  _loadAllLeaveData();
-                                }
-                              },
+                        // Year Selector Dropdown (Salaried Only)
+                        if (_balance?.isSalaried != false)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.white24),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _availableYears.any((y) => y.code == _selectedYear) ? _selectedYear : null,
+                                hint: Text(_selectedYear, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                dropdownColor: AppColors.cardDark,
+                                icon: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+                                items: (_availableYears.isNotEmpty ? _availableYears : [
+                                  LeaveYearModel(code: '2026', name: '2026'),
+                                  LeaveYearModel(code: '2025', name: '2025'),
+                                  LeaveYearModel(code: '2024', name: '2024'),
+                                ]).map((y) {
+                                  return DropdownMenuItem<String>(
+                                    value: y.code,
+                                    child: Text(
+                                      y.name,
+                                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (newYear) {
+                                  if (newYear != null && newYear != _selectedYear) {
+                                    setState(() => _selectedYear = newYear);
+                                    _loadAllLeaveData();
+                                  }
+                                },
+                              ),
                             ),
                           ),
-                        ),
                         const SizedBox(width: 4),
                         IconButton(
                           icon: const Icon(Icons.refresh, color: Colors.white70),
@@ -586,8 +587,61 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                     ),
                   ),
                 )
+              else if (_balance?.isSalaried == false)
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.withOpacity(0.12),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                            ),
+                            child: const Icon(Icons.badge_outlined, color: Colors.amberAccent, size: 48),
+                          ),
+                          const SizedBox(height: 20),
+                          const Text(
+                            'Daily-Wage Staff Notice',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            _balance?.message ??
+                                'The Annual Leave Calendar (Jan 1 – Dec 31) and monthly paid leave accruals apply exclusively to salaried employees.\n\nYour compensation is calculated based on daily shifts worked. Daily-wage employees do not use the salaried annual leave calendar.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 13,
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white12,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.arrow_back, size: 18),
+                            label: const Text('Back to Home'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
               else ...[
-                // Metrics Overview
+                // Salaried Employee Annual Leave Calendar (Jan 1 - Dec 31)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
@@ -615,111 +669,77 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                       ),
                       const SizedBox(height: 12),
 
-                      // Daily-Wage vs Salaried 26-Day Progress
-                      if (_balance?.isSalaried == false) ...[
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.amber.shade900.withOpacity(0.25),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: Colors.amber.shade600),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Row(
-                                children: [
-                                  Icon(Icons.info_outline, color: Colors.amberAccent, size: 20),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Daily-Wage Staff Notice',
-                                    style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 14),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                _balance?.message ??
-                                    'Salaried Annual Leave Calendar (Jan 1 – Dec 31) applies exclusively to salaried staff. Daily-wage employees receive wages per day worked and do not receive salaried leave entitlement.',
-                                style: const TextStyle(color: Colors.white, fontSize: 12, height: 1.35),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ] else ...[
-                        // 26-Day Cumulative Present Days Progress Card for Salaried
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
+                      // 26-Day Cumulative Present Days Progress Card for Salaried
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: (_balance?.is26DayRequirementMet ?? false)
+                              ? AppColors.success.withOpacity(0.12)
+                              : Colors.blue.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
                             color: (_balance?.is26DayRequirementMet ?? false)
-                                ? AppColors.success.withOpacity(0.12)
-                                : Colors.blue.withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: (_balance?.is26DayRequirementMet ?? false)
-                                  ? AppColors.success.withOpacity(0.4)
-                                  : Colors.blue.withOpacity(0.3),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(
-                                        (_balance?.is26DayRequirementMet ?? false)
-                                            ? Icons.verified
-                                            : Icons.timelapse,
-                                        color: (_balance?.is26DayRequirementMet ?? false)
-                                            ? AppColors.success
-                                            : Colors.blueAccent,
-                                        size: 16,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      const Text(
-                                        '26-Day Annual Eligibility Requirement',
-                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),
-                                      ),
-                                    ],
-                                  ),
-                                  Text(
-                                    '${_balance?.cumulativePresentDays ?? 0} / 26 days',
-                                    style: TextStyle(
-                                      color: (_balance?.is26DayRequirementMet ?? false) ? AppColors.success : Colors.white70,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 11.5,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: LinearProgressIndicator(
-                                  value: ((_balance?.cumulativePresentDays ?? 0) / 26.0).clamp(0.0, 1.0),
-                                  backgroundColor: Colors.white12,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    (_balance?.is26DayRequirementMet ?? false) ? AppColors.success : Colors.blueAccent,
-                                  ),
-                                  minHeight: 5,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                (_balance?.is26DayRequirementMet ?? false)
-                                    ? '✅ Eligibility met: Entitled to 2 days/month salaried leave.'
-                                    : '⚠️ Need at least 26 valid present days in $_selectedYear to become eligible for leave accrual.',
-                                style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
-                              ),
-                            ],
+                                ? AppColors.success.withOpacity(0.4)
+                                : Colors.blue.withOpacity(0.3),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                      ],
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      (_balance?.is26DayRequirementMet ?? false)
+                                          ? Icons.verified
+                                          : Icons.timelapse,
+                                      color: (_balance?.is26DayRequirementMet ?? false)
+                                          ? AppColors.success
+                                          : Colors.blueAccent,
+                                      size: 16,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      '26-Day Annual Eligibility Requirement',
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),
+                                    ),
+                                  ],
+                                ),
+                                Text(
+                                  '${_balance?.cumulativePresentDays ?? 0} / 26 days',
+                                  style: TextStyle(
+                                    color: (_balance?.is26DayRequirementMet ?? false) ? AppColors.success : Colors.white70,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: LinearProgressIndicator(
+                                value: ((_balance?.cumulativePresentDays ?? 0) / 26.0).clamp(0.0, 1.0),
+                                backgroundColor: Colors.white12,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  (_balance?.is26DayRequirementMet ?? false) ? AppColors.success : Colors.blueAccent,
+                                ),
+                                minHeight: 5,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              (_balance?.is26DayRequirementMet ?? false)
+                                  ? '✅ Eligibility met: Entitled to 2 days/month salaried leave.'
+                                  : '⚠️ Need at least 26 valid present days in $_selectedYear to become eligible for leave accrual.',
+                              style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
 
                       // Metric Grid
                       Row(

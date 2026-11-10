@@ -683,6 +683,17 @@ class ApiService {
     }
   }
 
+  Future<MonthlyAttendanceSummaryModel> adminGetEmployeeMonthlySummary(int userId, {String? month}) async {
+    try {
+      final query = <String, dynamic>{'userId': userId};
+      if (month != null) query['month'] = month;
+      final response = await _dio.get('/api/admin/attendance/monthly-summary', queryParameters: query);
+      return MonthlyAttendanceSummaryModel.fromJson(response.data);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch employee monthly summary');
+    }
+  }
+
   Future<LeaveBalanceModel> getLeaveBalance({String? year}) async {
     try {
       final query = <String, dynamic>{};

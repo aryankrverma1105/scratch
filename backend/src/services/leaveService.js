@@ -1005,7 +1005,10 @@ async function performAnnualLeaveYearReset(fromYear, toYear) {
 
 async function getAvailableLeaveYears() {
   const rows = await db.query(
-    'SELECT code, code as name, start_date, end_date, is_active FROM leave_years ORDER BY start_date DESC'
+    `SELECT code, code as name, start_date, end_date, is_active 
+     FROM leave_years 
+     WHERE length(code) = 4 AND CAST(code AS INTEGER) BETWEEN 2020 AND 2050 
+     ORDER BY code DESC`
   );
   return rows || [];
 }
