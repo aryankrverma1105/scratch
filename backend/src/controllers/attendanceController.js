@@ -3,6 +3,7 @@ const fs = require('fs');
 const { getCompanyDate } = require('../utils/timeUtils');
 const { evaluateGeofence } = require('../utils/geofenceUtils');
 const { logActivity } = require('../services/activityLogger');
+const attendanceSummaryService = require('../services/attendanceSummaryService');
 
 // Check current attendance state for logged in user
 async function getCurrentStatus(req, res) {
@@ -426,9 +427,23 @@ async function getMyHistory(req, res) {
   }
 }
 
+// Monthly attendance summary for current logged-in employee (Part 2)
+async function getMonthlySummary(req, res) {
+  try {
+    const userId = req.user.id;
+    const { month } = req.query;
+    const summary = await attendanceSummaryService.getEmployeeMonthlySummary(userId, month);
+    return res.json({ success: true, ...summary });
+  } catch (error) {
+    console.error('getMonthlySummary error:', error);
+    return res.status(500).json({ error: 'Failed to fetch monthly attendance summary', details: error.message });
+  }
+}
+
 module.exports = {
   getCurrentStatus,
   checkIn,
   checkOut,
   getMyHistory,
+  getMonthlySummary,
 };

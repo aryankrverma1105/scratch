@@ -1177,6 +1177,40 @@ function initDatabase() {
         try { await run("ALTER TABLE location_tracks ADD COLUMN app_version VARCHAR(50)"); } catch (_) {}
       },
     },
+    {
+      version: 14,
+      name: 'cell_tower_location_status_telemetry_and_leave_records_metadata',
+      up: async () => {
+        // Location tracks telemetry columns
+        try { await run("ALTER TABLE location_tracks ADD COLUMN location_status VARCHAR(30) DEFAULT 'LIVE'"); } catch (_) {}
+        try { await run("ALTER TABLE location_tracks ADD COLUMN cell_network_type VARCHAR(50)"); } catch (_) {}
+        try { await run("ALTER TABLE location_tracks ADD COLUMN provider_accuracy REAL"); } catch (_) {}
+        try { await run("ALTER TABLE location_tracks ADD COLUMN upload_status VARCHAR(30) DEFAULT 'ONLINE'"); } catch (_) {}
+        try { await run("ALTER TABLE location_tracks ADD COLUMN interruption_reason VARCHAR(100)"); } catch (_) {}
+
+        // Attendance telemetry columns
+        try { await run("ALTER TABLE attendance ADD COLUMN location_status VARCHAR(30) DEFAULT 'LIVE'"); } catch (_) {}
+        try { await run("ALTER TABLE attendance ADD COLUMN cell_network_type VARCHAR(50)"); } catch (_) {}
+        try { await run("ALTER TABLE attendance ADD COLUMN provider_accuracy REAL"); } catch (_) {}
+
+        // Leave records admin review tracking
+        try { await run("ALTER TABLE leave_records ADD COLUMN admin_remarks TEXT"); } catch (_) {}
+        try { await run("ALTER TABLE leave_records ADD COLUMN reviewed_by INTEGER REFERENCES users(id)"); } catch (_) {}
+        try { await run(isPostgres ? 'ALTER TABLE leave_records ADD COLUMN reviewed_at TIMESTAMP' : 'ALTER TABLE leave_records ADD COLUMN reviewed_at DATETIME'); } catch (_) {}
+
+        // Ensure annual leave years 2024, 2025, 2026, 2027 exist
+        const currentYear = new Date().getFullYear();
+        for (const yr of [2024, 2025, 2026, 2027, 2028]) {
+          try {
+            await run(
+              isPostgres
+                ? `INSERT INTO leave_years (code, start_date, end_date, is_active) VALUES ('${yr}', '${yr}-01-01', '${yr}-12-31', ${yr === currentYear ? 1 : 0}) ON CONFLICT (code) DO NOTHING`
+                : `INSERT OR IGNORE INTO leave_years (code, start_date, end_date, is_active) VALUES ('${yr}', '${yr}-01-01', '${yr}-12-31', ${yr === currentYear ? 1 : 0})`
+            );
+          } catch (_) {}
+        }
+      },
+    },
   ];
 
   for (const m of migrations) {
@@ -1207,6 +1241,17 @@ function initDatabase() {
   try { await run("ALTER TABLE users ADD COLUMN last_active_at DATETIME"); } catch (_) {}
   try { await run("ALTER TABLE attendance ADD COLUMN app_version VARCHAR(50)"); } catch (_) {}
   try { await run("ALTER TABLE location_tracks ADD COLUMN app_version VARCHAR(50)"); } catch (_) {}
+  try { await run("ALTER TABLE location_tracks ADD COLUMN location_status VARCHAR(30) DEFAULT 'LIVE'"); } catch (_) {}
+  try { await run("ALTER TABLE location_tracks ADD COLUMN cell_network_type VARCHAR(50)"); } catch (_) {}
+  try { await run("ALTER TABLE location_tracks ADD COLUMN provider_accuracy REAL"); } catch (_) {}
+  try { await run("ALTER TABLE location_tracks ADD COLUMN upload_status VARCHAR(30) DEFAULT 'ONLINE'"); } catch (_) {}
+  try { await run("ALTER TABLE location_tracks ADD COLUMN interruption_reason VARCHAR(100)"); } catch (_) {}
+  try { await run("ALTER TABLE attendance ADD COLUMN location_status VARCHAR(30) DEFAULT 'LIVE'"); } catch (_) {}
+  try { await run("ALTER TABLE attendance ADD COLUMN cell_network_type VARCHAR(50)"); } catch (_) {}
+  try { await run("ALTER TABLE attendance ADD COLUMN provider_accuracy REAL"); } catch (_) {}
+  try { await run("ALTER TABLE leave_records ADD COLUMN admin_remarks TEXT"); } catch (_) {}
+  try { await run("ALTER TABLE leave_records ADD COLUMN reviewed_by INTEGER REFERENCES users(id)"); } catch (_) {}
+  try { await run(isPostgres ? 'ALTER TABLE leave_records ADD COLUMN reviewed_at TIMESTAMP' : 'ALTER TABLE leave_records ADD COLUMN reviewed_at DATETIME'); } catch (_) {}
 
   // Seed Admin on first run with random password if no admin exists
   const existingAdmin = await get("SELECT id FROM users WHERE role = 'admin' LIMIT 1");

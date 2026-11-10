@@ -43,6 +43,7 @@ router.get('/users/:id/route', adminController.getUserRouteHistory);
 
 // Attendance records
 router.get('/attendance', adminController.getAllAttendance);
+router.get('/attendance/monthly-summary', adminController.getAdminMonthlyAttendanceSummary);
 
 // GPS status alerts (Requirement 14 & 15)
 router.get('/alerts', adminController.getGpsAlerts);

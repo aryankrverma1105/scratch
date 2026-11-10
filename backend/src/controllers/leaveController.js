@@ -4,6 +4,16 @@ const { getCompanyDate } = require('../utils/timeUtils');
 const db = require('../db');
 const { isRootSuperAdmin } = require('./adminController');
 
+// Get list of available annual leave calendar years (e.g., 2024, 2025, 2026, 2027, 2028)
+async function getLeaveYears(req, res) {
+  try {
+    const years = await leaveService.getAvailableLeaveYears();
+    return res.json({ success: true, years });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
 // Employee: Get current leave balance
 async function getMyLeaveBalance(req, res) {
   try {
@@ -412,6 +422,7 @@ async function adminResetLeaveBalances(req, res) {
 }
 
 module.exports = {
+  getLeaveYears,
   getMyLeaveBalance,
   getMyLeaveSummary,
   getMyLeaveHistory,

@@ -240,10 +240,11 @@
           <div class="map-container-wrapper card">
             <div class="map-controls-bar">
               <div class="map-legend">
-                <span class="legend-pill inside"><span class="dot"></span> Inside Geofence</span>
-                <span class="legend-pill outside"><span class="dot"></span> Outside (Pending/Review)</span>
-                <span class="legend-pill" style="color: #fbbf24;"><span class="dot" style="background:#fbbf24;"></span> 🗼 Cell Tower</span>
-                <span class="legend-pill" style="color: #34d399;"><span class="dot" style="background:#34d399;"></span> 🛰️ Location Services (GPS)</span>
+                <span class="legend-pill" style="color: #10b981;"><span class="dot" style="background:#10b981;"></span> 🛰️ GPS Satellites</span>
+                <span class="legend-pill" style="color: #0ea5e9;"><span class="dot" style="background:#0ea5e9;"></span> 📶 Fused Network</span>
+                <span class="legend-pill" style="color: #f59e0b;"><span class="dot" style="background:#f59e0b;"></span> 🗼 Cell Tower</span>
+                <span class="legend-pill" style="color: #ea580c;"><span class="dot" style="background:#ea580c;"></span> ⏱️ Last Known (STALE)</span>
+                <span class="legend-pill" style="color: #ef4444;"><span class="dot" style="background:#ef4444;"></span> ⚠️ Unavailable (GPS OFF)</span>
                 <span class="legend-pill office-circle"><span class="circle-dot"></span> Office Boundary</span>
               </div>
               <div class="map-actions">
@@ -361,20 +362,26 @@
           </div>
         </section>
 
-        <!-- 5. ATTENDANCE MANAGEMENT -->
+        <!-- 5. ATTENDANCE SESSIONS & MONTHLY SUMMARY -->
         <section id="section-attendance" class="content-section">
           <div class="card">
-            <div class="card-header flex-wrap">
-              <div>
-                <h3>Attendance Sessions</h3>
-                <p class="text-muted text-sm">Multiple check-ins on the same IST date strictly aggregate into 1 payable attendance day.</p>
+            <div class="card-header flex-wrap" style="align-items: center; justify-content: space-between;">
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <button id="tab-attendance-daily" class="btn btn-sm btn-primary" onclick="switchAttendanceTab('daily')">Daily Sessions</button>
+                <button id="tab-attendance-monthly" class="btn btn-sm btn-secondary" onclick="switchAttendanceTab('monthly')">Monthly Attendance Summary</button>
               </div>
-              <div class="filter-controls">
+              <div id="attendance-daily-filters" class="filter-controls">
                 <input type="date" id="attendance-date-filter" class="input-date">
                 <input type="text" id="attendance-search-input" placeholder="Search employee name..." class="input-search">
               </div>
+              <div id="attendance-monthly-filters" class="filter-controls" style="display: none;">
+                <input type="month" id="monthly-summary-picker" class="input-date">
+                <input type="text" id="monthly-summary-search" placeholder="Search employee name..." class="input-search">
+              </div>
             </div>
-            <div class="card-body p-0">
+
+            <!-- Daily Sessions View -->
+            <div id="attendance-daily-view" class="card-body p-0">
               <div class="table-responsive">
                 <table class="table">
                   <thead>
@@ -390,6 +397,32 @@
                   </thead>
                   <tbody id="attendance-table-body">
                     <tr><td colspan="7" class="text-center p-4">Loading attendance records...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Monthly Summary View -->
+            <div id="attendance-monthly-view" class="card-body p-0" style="display: none;">
+              <div id="monthly-summary-stats-banner" style="padding: 12px 18px; background: rgba(255,255,255,0.03); border-bottom: 1px solid #334155; font-size: 13px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <div><strong id="monthly-month-label">November 2026</strong> • Working Days: <span id="monthly-working-days" style="color: #60a5fa; font-weight: bold;">0</span> (Sundays Excluded: <span id="monthly-sundays">0</span>, Holidays: <span id="monthly-holidays">0</span>)</div>
+                <div class="text-muted text-xs">Unique calendar IST days • Multiple sessions on same day count as 1 present day</div>
+              </div>
+              <div class="table-responsive">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Salary Type</th>
+                      <th>Present Days</th>
+                      <th>Working Days</th>
+                      <th>Absent Days</th>
+                      <th>Attendance %</th>
+                      <th>History Drilldown</th>
+                    </tr>
+                  </thead>
+                  <tbody id="monthly-summary-table-body">
+                    <tr><td colspan="7" class="text-center p-4">Loading monthly summary...</td></tr>
                   </tbody>
                 </table>
               </div>

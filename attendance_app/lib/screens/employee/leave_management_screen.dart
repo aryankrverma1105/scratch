@@ -20,6 +20,8 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
   List<LeaveRecordModel> _leaves = [];
   List<AttendanceAbsenceModel> _absences = [];
   HolidaysResponseModel? _holidays;
+  String _selectedYear = '2026';
+  List<LeaveYearModel> _availableYears = [];
 
   @override
   void initState() {
@@ -41,10 +43,19 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
     });
 
     try {
-      final balFuture = ApiService().getLeaveBalance();
-      final sumFuture = ApiService().getLeaveSummary();
-      final histFuture = ApiService().getLeaveHistory();
-      final holFuture = ApiService().getCompanyHolidays();
+      if (_availableYears.isEmpty) {
+        try {
+          _availableYears = await ApiService().getAvailableLeaveYears();
+          if (_availableYears.isNotEmpty && !_availableYears.any((y) => y.code == _selectedYear)) {
+            _selectedYear = _availableYears.first.code;
+          }
+        } catch (_) {}
+      }
+
+      final balFuture = ApiService().getLeaveBalance(year: _selectedYear);
+      final sumFuture = ApiService().getLeaveSummary(year: _selectedYear);
+      final histFuture = ApiService().getLeaveHistory(year: _selectedYear);
+      final holFuture = ApiService().getCompanyHolidays(year: _selectedYear);
 
       final results = await Future.wait([balFuture, sumFuture, histFuture, holFuture]);
 
@@ -460,13 +471,15 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.success,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_task),
-        label: const Text('Apply Leave', style: TextStyle(fontWeight: FontWeight.bold)),
-        onPressed: _showApplyLeaveModal,
-      ),
+      floatingActionButton: (_balance?.isSalaried == false)
+          ? null
+          : FloatingActionButton.extended(
+              backgroundColor: AppColors.success,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_task),
+              label: const Text('Apply Leave', style: TextStyle(fontWeight: FontWeight.bold)),
+              onPressed: _showApplyLeaveModal,
+            ),
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -494,13 +507,54 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                         const SizedBox(width: 6),
                         const Text(
                           'Leave Management',
-                          style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh, color: Colors.white70),
-                      onPressed: _loadAllLeaveData,
+                    Row(
+                      children: [
+                        // Year Selector Dropdown
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _availableYears.any((y) => y.code == _selectedYear) ? _selectedYear : null,
+                              hint: Text(_selectedYear, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                              dropdownColor: AppColors.cardDark,
+                              icon: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+                              items: (_availableYears.isNotEmpty ? _availableYears : [
+                                LeaveYearModel(code: '2026', name: '2026'),
+                                LeaveYearModel(code: '2025', name: '2025'),
+                                LeaveYearModel(code: '2024', name: '2024'),
+                              ]).map((y) {
+                                return DropdownMenuItem<String>(
+                                  value: y.code,
+                                  child: Text(
+                                    y.name,
+                                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (newYear) {
+                                if (newYear != null && newYear != _selectedYear) {
+                                  setState(() => _selectedYear = newYear);
+                                  _loadAllLeaveData();
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: const Icon(Icons.refresh, color: Colors.white70),
+                          onPressed: _loadAllLeaveData,
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -538,7 +592,7 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Column(
                     children: [
-                      // Annual Leave Policy Banner
+                      // Annual Leave Policy Banner (1 Jan - 31 Dec)
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                         decoration: BoxDecoration(
@@ -552,14 +606,120 @@ class _LeaveManagementScreenState extends State<LeaveManagementScreen> with Sing
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                'Leave Year: ${_balance?.leaveYear ?? "Current"} (1 Apr – 31 Mar) • Earned Leaves & Office Holidays',
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                                'Annual Leave Year: $_selectedYear (1 Jan – 31 Dec) • Salaried Entitlement: 2 Days/Mo',
+                                style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
                               ),
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 12),
+
+                      // Daily-Wage vs Salaried 26-Day Progress
+                      if (_balance?.isSalaried == false) ...[
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade900.withOpacity(0.25),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.amber.shade600),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.info_outline, color: Colors.amberAccent, size: 20),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Daily-Wage Staff Notice',
+                                    style: TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                _balance?.message ??
+                                    'Salaried Annual Leave Calendar (Jan 1 – Dec 31) applies exclusively to salaried staff. Daily-wage employees receive wages per day worked and do not receive salaried leave entitlement.',
+                                style: const TextStyle(color: Colors.white, fontSize: 12, height: 1.35),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ] else ...[
+                        // 26-Day Cumulative Present Days Progress Card for Salaried
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: (_balance?.is26DayRequirementMet ?? false)
+                                ? AppColors.success.withOpacity(0.12)
+                                : Colors.blue.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: (_balance?.is26DayRequirementMet ?? false)
+                                  ? AppColors.success.withOpacity(0.4)
+                                  : Colors.blue.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        (_balance?.is26DayRequirementMet ?? false)
+                                            ? Icons.verified
+                                            : Icons.timelapse,
+                                        color: (_balance?.is26DayRequirementMet ?? false)
+                                            ? AppColors.success
+                                            : Colors.blueAccent,
+                                        size: 16,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Text(
+                                        '26-Day Annual Eligibility Requirement',
+                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    '${_balance?.cumulativePresentDays ?? 0} / 26 days',
+                                    style: TextStyle(
+                                      color: (_balance?.is26DayRequirementMet ?? false) ? AppColors.success : Colors.white70,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: LinearProgressIndicator(
+                                  value: ((_balance?.cumulativePresentDays ?? 0) / 26.0).clamp(0.0, 1.0),
+                                  backgroundColor: Colors.white12,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    (_balance?.is26DayRequirementMet ?? false) ? AppColors.success : Colors.blueAccent,
+                                  ),
+                                  minHeight: 5,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                (_balance?.is26DayRequirementMet ?? false)
+                                    ? '✅ Eligibility met: Entitled to 2 days/month salaried leave.'
+                                    : '⚠️ Need at least 26 valid present days in $_selectedYear to become eligible for leave accrual.',
+                                style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
 
                       // Metric Grid
                       Row(

@@ -5,6 +5,12 @@ class LeaveBalanceModel {
   final double used;
   final double expired;
   final double balance;
+  final bool isSalaried;
+  final String? salaryType;
+  final int cumulativePresentDays;
+  final int requiredPresentDays;
+  final bool is26DayRequirementMet;
+  final String? message;
   final List<LeaveAccrualItem> accruals;
 
   LeaveBalanceModel({
@@ -14,6 +20,12 @@ class LeaveBalanceModel {
     required this.used,
     required this.expired,
     required this.balance,
+    this.isSalaried = true,
+    this.salaryType,
+    this.cumulativePresentDays = 0,
+    this.requiredPresentDays = 26,
+    this.is26DayRequirementMet = false,
+    this.message,
     this.accruals = const [],
   });
 
@@ -31,7 +43,139 @@ class LeaveBalanceModel {
       used: (json['used'] as num?)?.toDouble() ?? 0.0,
       expired: (json['expired'] as num?)?.toDouble() ?? 0.0,
       balance: (json['balance'] as num?)?.toDouble() ?? 0.0,
+      isSalaried: json['isSalaried'] != false,
+      salaryType: json['salaryType']?.toString(),
+      cumulativePresentDays: (json['cumulativePresentDays'] as num?)?.toInt() ?? 0,
+      requiredPresentDays: (json['requiredPresentDays'] as num?)?.toInt() ?? 26,
+      is26DayRequirementMet: json['is26DayRequirementMet'] == true,
+      message: json['message']?.toString(),
       accruals: accrualList,
+    );
+  }
+}
+
+class LeaveYearModel {
+  final String code;
+  final String name;
+  final String? startDate;
+  final String? endDate;
+  final bool isActive;
+
+  LeaveYearModel({
+    required this.code,
+    required this.name,
+    this.startDate,
+    this.endDate,
+    this.isActive = false,
+  });
+
+  factory LeaveYearModel.fromJson(Map<String, dynamic> json) {
+    return LeaveYearModel(
+      code: json['code']?.toString() ?? '',
+      name: json['name']?.toString() ?? json['code']?.toString() ?? '',
+      startDate: json['start_date']?.toString(),
+      endDate: json['end_date']?.toString(),
+      isActive: json['is_active'] == 1 || json['is_active'] == true,
+    );
+  }
+}
+
+class MonthlyAttendanceSummaryModel {
+  final int userId;
+  final String userName;
+  final String yearMonth;
+  final String monthName;
+  final bool isCurrentMonth;
+  final int calendarDaysInMonth;
+  final int elapsedCalendarDays;
+  final int totalWorkingDays;
+  final int presentDays;
+  final int absentDays;
+  final double attendancePercentage;
+  final int sundaysCount;
+  final int holidaysCount;
+  final List<String> presentDates;
+
+  MonthlyAttendanceSummaryModel({
+    required this.userId,
+    required this.userName,
+    required this.yearMonth,
+    required this.monthName,
+    this.isCurrentMonth = false,
+    this.calendarDaysInMonth = 30,
+    this.elapsedCalendarDays = 0,
+    required this.totalWorkingDays,
+    required this.presentDays,
+    required this.absentDays,
+    required this.attendancePercentage,
+    this.sundaysCount = 0,
+    this.holidaysCount = 0,
+    this.presentDates = const [],
+  });
+
+  factory MonthlyAttendanceSummaryModel.fromJson(Map<String, dynamic> json) {
+    final rawDates = json['presentDates'];
+    List<String> dates = [];
+    if (rawDates is List) {
+      dates = rawDates.map((e) => e.toString()).toList();
+    }
+
+    return MonthlyAttendanceSummaryModel(
+      userId: json['userId'] is int ? json['userId'] : int.tryParse(json['userId']?.toString() ?? '0') ?? 0,
+      userName: json['userName']?.toString() ?? 'Employee',
+      yearMonth: json['yearMonth']?.toString() ?? '',
+      monthName: json['monthName']?.toString() ?? '',
+      isCurrentMonth: json['isCurrentMonth'] == true,
+      calendarDaysInMonth: (json['calendarDaysInMonth'] as num?)?.toInt() ?? 30,
+      elapsedCalendarDays: (json['elapsedCalendarDays'] as num?)?.toInt() ?? 0,
+      totalWorkingDays: (json['totalWorkingDays'] as num?)?.toInt() ?? 0,
+      presentDays: (json['presentDays'] as num?)?.toInt() ?? 0,
+      absentDays: (json['absentDays'] as num?)?.toInt() ?? 0,
+      attendancePercentage: (json['attendancePercentage'] as num?)?.toDouble() ?? 0.0,
+      sundaysCount: (json['sundaysCount'] as num?)?.toInt() ?? 0,
+      holidaysCount: (json['holidaysCount'] as num?)?.toInt() ?? 0,
+      presentDates: dates,
+    );
+  }
+}
+
+class AdminEmployeeMonthlySummaryModel {
+  final int userId;
+  final String fullName;
+  final String email;
+  final String? department;
+  final String? role;
+  final String? salaryType;
+  final int presentDays;
+  final int workingDays;
+  final int absentDays;
+  final double attendancePercentage;
+
+  AdminEmployeeMonthlySummaryModel({
+    required this.userId,
+    required this.fullName,
+    required this.email,
+    this.department,
+    this.role,
+    this.salaryType,
+    required this.presentDays,
+    required this.workingDays,
+    required this.absentDays,
+    required this.attendancePercentage,
+  });
+
+  factory AdminEmployeeMonthlySummaryModel.fromJson(Map<String, dynamic> json) {
+    return AdminEmployeeMonthlySummaryModel(
+      userId: json['userId'] is int ? json['userId'] : int.tryParse(json['userId']?.toString() ?? '0') ?? 0,
+      fullName: json['fullName']?.toString() ?? 'Employee',
+      email: json['email']?.toString() ?? '',
+      department: json['department']?.toString(),
+      role: json['role']?.toString(),
+      salaryType: json['salaryType']?.toString(),
+      presentDays: (json['presentDays'] as num?)?.toInt() ?? 0,
+      workingDays: (json['workingDays'] as num?)?.toInt() ?? 0,
+      absentDays: (json['absentDays'] as num?)?.toInt() ?? 0,
+      attendancePercentage: (json['attendancePercentage'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

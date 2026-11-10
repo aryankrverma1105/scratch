@@ -408,8 +408,136 @@ async function deleteOffice(id, name) {
 }
 
 // ==========================================================================
-// ATTENDANCE SESSIONS MANAGEMENT
+// ATTENDANCE SESSIONS & MONTHLY SUMMARY MANAGEMENT
 // ==========================================================================
+let currentAttendanceTab = 'daily';
+let allMonthlySummaryEmployees = [];
+
+function switchAttendanceTab(tab) {
+  currentAttendanceTab = tab;
+  const btnDaily = document.getElementById('tab-attendance-daily');
+  const btnMonthly = document.getElementById('tab-attendance-monthly');
+  const viewDaily = document.getElementById('attendance-daily-view');
+  const viewMonthly = document.getElementById('attendance-monthly-view');
+  const filtersDaily = document.getElementById('attendance-daily-filters');
+  const filtersMonthly = document.getElementById('attendance-monthly-filters');
+
+  if (tab === 'daily') {
+    if (btnDaily) { btnDaily.className = 'btn btn-sm btn-primary'; }
+    if (btnMonthly) { btnMonthly.className = 'btn btn-sm btn-secondary'; }
+    if (viewDaily) viewDaily.style.display = 'block';
+    if (viewMonthly) viewMonthly.style.display = 'none';
+    if (filtersDaily) filtersDaily.style.display = 'flex';
+    if (filtersMonthly) filtersMonthly.style.display = 'none';
+    loadAttendance();
+  } else {
+    if (btnDaily) { btnDaily.className = 'btn btn-sm btn-secondary'; }
+    if (btnMonthly) { btnMonthly.className = 'btn btn-sm btn-primary'; }
+    if (viewDaily) viewDaily.style.display = 'none';
+    if (viewMonthly) viewMonthly.style.display = 'block';
+    if (filtersDaily) filtersDaily.style.display = 'none';
+    if (filtersMonthly) filtersMonthly.style.display = 'flex';
+
+    const monthPicker = document.getElementById('monthly-summary-picker');
+    if (monthPicker && !monthPicker.value) {
+      const now = new Date();
+      const yr = now.getFullYear();
+      const mo = String(now.getMonth() + 1).padStart(2, '0');
+      monthPicker.value = `${yr}-${mo}`;
+    }
+    loadMonthlyAttendanceSummary();
+  }
+}
+
+async function loadMonthlyAttendanceSummary() {
+  const tbody = document.getElementById('monthly-summary-table-body');
+  const monthPicker = document.getElementById('monthly-summary-picker');
+  const searchInput = document.getElementById('monthly-summary-search');
+  if (!tbody) return;
+
+  const now = new Date();
+  const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const month = monthPicker && monthPicker.value ? monthPicker.value : defaultMonth;
+  const search = searchInput && searchInput.value ? searchInput.value.trim() : '';
+
+  try {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-muted">Calculating monthly attendance summary...</td></tr>';
+    const query = new URLSearchParams({ month });
+    if (search) query.set('search', search);
+
+    const data = await apiRequest(`/api/admin/attendance/monthly-summary?${query.toString()}`);
+    
+    // Update summary counters
+    const lblMonth = document.getElementById('monthly-month-label');
+    const lblWork = document.getElementById('monthly-working-days');
+    const lblSundays = document.getElementById('monthly-sundays');
+    const lblHolidays = document.getElementById('monthly-holidays');
+
+    if (lblMonth) lblMonth.textContent = data.monthName || month;
+    if (lblWork) lblWork.textContent = data.totalWorkingDays ?? 0;
+    if (lblSundays) lblSundays.textContent = data.sundaysCount ?? 0;
+    if (lblHolidays) lblHolidays.textContent = data.holidaysCount ?? 0;
+
+    allMonthlySummaryEmployees = data.employees || [];
+    renderMonthlyAttendanceTable(allMonthlySummaryEmployees);
+  } catch (err) {
+    console.error('Failed to load monthly attendance summary:', err);
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-red p-4">Error loading monthly summary: ${escapeHtml(err.message)}</td></tr>`;
+  }
+}
+
+function renderMonthlyAttendanceTable(list) {
+  const tbody = document.getElementById('monthly-summary-table-body');
+  if (!tbody) return;
+
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center p-4 text-muted">No employee attendance records found for this month.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(emp => {
+    const isSalaried = emp.salaryType === 'fixed_monthly';
+    const salaryBadge = isSalaried
+      ? '<span class="badge badge-info" style="font-size:10.5px;">Salaried</span>'
+      : '<span class="badge badge-warning" style="font-size:10.5px;">Daily Wage</span>';
+
+    const pct = Number(emp.attendancePercentage || 0);
+    const pctBadgeClass = pct >= 80 ? 'badge-success' : 'badge-warning';
+
+    return `
+      <tr>
+        <td>
+          <strong>${escapeHtml(emp.fullName)}</strong>
+          <div class="text-xs text-muted">ID: ${emp.userId} | ${escapeHtml(emp.department || 'General')}</div>
+        </td>
+        <td>${salaryBadge}</td>
+        <td><strong style="color:#10b981;">${emp.presentDays}</strong> Days</td>
+        <td><strong>${emp.workingDays}</strong> Days</td>
+        <td><span style="color:${emp.absentDays > 0 ? '#ef4444' : '#94a3b8'}; font-weight:${emp.absentDays > 0 ? 'bold' : 'normal'};">${emp.absentDays}</span> Days</td>
+        <td><span class="badge ${pctBadgeClass}" style="font-size:11px; font-weight:bold;">${pct.toFixed(1)}%</span></td>
+        <td>
+          <button class="btn btn-secondary btn-sm" onclick="drilldownEmployeeAttendance(${emp.userId}, '${escapeHtml(emp.fullName)}')">
+            Drilldown
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function drilldownEmployeeAttendance(userId, fullName) {
+  switchAttendanceTab('daily');
+  const searchInput = document.getElementById('attendance-search-input');
+  if (searchInput) {
+    searchInput.value = fullName;
+    allAttendance = allAttendance.filter(a =>
+      (a.employee_name || a.full_name || '').toLowerCase().includes(fullName.toLowerCase()) ||
+      String(a.user_id) === String(userId)
+    );
+    renderAttendanceTable(allAttendance);
+  }
+}
+
 async function loadAttendance() {
   const tbody = document.getElementById('attendance-table-body');
   const dateInput = document.getElementById('attendance-date-filter');
@@ -694,6 +822,23 @@ document.addEventListener('DOMContentLoaded', () => {
         String(a.employee_id).includes(q)
       );
       renderAttendanceTable(filtered);
+    });
+  }
+
+  // Monthly Attendance Summary Filters
+  const monthlyPicker = document.getElementById('monthly-summary-picker');
+  if (monthlyPicker) monthlyPicker.addEventListener('change', loadMonthlyAttendanceSummary);
+
+  const monthlySearch = document.getElementById('monthly-summary-search');
+  if (monthlySearch) {
+    monthlySearch.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      const filtered = allMonthlySummaryEmployees.filter(emp =>
+        (emp.fullName && emp.fullName.toLowerCase().includes(q)) ||
+        (emp.department && emp.department.toLowerCase().includes(q)) ||
+        String(emp.userId).includes(q)
+      );
+      renderMonthlyAttendanceTable(filtered);
     });
   }
 

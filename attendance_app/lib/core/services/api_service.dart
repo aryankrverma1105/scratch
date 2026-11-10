@@ -635,6 +635,54 @@ class ApiService {
 
   // --- LEAVE MANAGEMENT APIs ---
 
+  Future<List<LeaveYearModel>> getAvailableLeaveYears() async {
+    try {
+      final response = await _dio.get('/api/leave/years');
+      final list = (response.data['years'] as List? ?? []);
+      return list.map((y) => LeaveYearModel.fromJson(y)).toList();
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch leave calendar years');
+    }
+  }
+
+  Future<MonthlyAttendanceSummaryModel> getMonthlyAttendanceSummary({String? month}) async {
+    try {
+      final query = <String, dynamic>{};
+      if (month != null) query['month'] = month;
+      final response = await _dio.get('/api/attendance/monthly-summary', queryParameters: query);
+      return MonthlyAttendanceSummaryModel.fromJson(response.data);
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch monthly attendance summary');
+    }
+  }
+
+  Future<Map<String, dynamic>> adminGetMonthlyAttendanceSummary({
+    String? month,
+    String? search,
+    int? userId,
+  }) async {
+    try {
+      final query = <String, dynamic>{};
+      if (month != null) query['month'] = month;
+      if (search != null && search.isNotEmpty) query['search'] = search;
+      if (userId != null) query['userId'] = userId;
+      final response = await _dio.get('/api/admin/attendance/monthly-summary', queryParameters: query);
+      final rawList = response.data['employees'] as List? ?? [];
+      return {
+        'yearMonth': response.data['yearMonth']?.toString() ?? '',
+        'monthName': response.data['monthName']?.toString() ?? '',
+        'isCurrentMonth': response.data['isCurrentMonth'] == true,
+        'totalWorkingDays': response.data['totalWorkingDays'] ?? 0,
+        'sundaysCount': response.data['sundaysCount'] ?? 0,
+        'holidaysCount': response.data['holidaysCount'] ?? 0,
+        'totalEmployees': response.data['totalEmployees'] ?? 0,
+        'employees': rawList.map((e) => AdminEmployeeMonthlySummaryModel.fromJson(e)).toList(),
+      };
+    } on DioException catch (e) {
+      throw Exception(e.response?.data?['error'] ?? 'Failed to fetch admin monthly attendance summary');
+    }
+  }
+
   Future<LeaveBalanceModel> getLeaveBalance({String? year}) async {
     try {
       final query = <String, dynamic>{};

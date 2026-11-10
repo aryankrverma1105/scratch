@@ -4,6 +4,7 @@ const config = require('../config');
 const { getCompanyDate, getDayRangeUtc } = require('../utils/timeUtils');
 const { logActivity } = require('../services/activityLogger');
 const salaryService = require('../services/salaryService');
+const attendanceSummaryService = require('../services/attendanceSummaryService');
 
 function isRootSuperAdmin(user) {
   if (!user) return false;
@@ -337,6 +338,11 @@ async function getLiveLocations(req, res) {
         COALESCE(t.network_status, a.network_status) as last_network_status,
         t.location_services_enabled as last_location_services_enabled,
         COALESCE(t.timestamp, a.check_in_time) as last_location_time,
+        t.location_status as track_location_status,
+        t.cell_network_type,
+        t.provider_accuracy,
+        t.upload_status,
+        COALESCE(t.interruption_reason, (SELECT ga.alert_type FROM gps_alerts ga WHERE ga.user_id = u.id AND ga.resolved = 0 ORDER BY ga.id DESC LIMIT 1)) as interruption_reason,
         CASE WHEN a.status = 'checked_in' THEN 1 ELSE 0 END as is_active_session
       FROM users u
       LEFT JOIN (
@@ -359,7 +365,29 @@ async function getLiveLocations(req, res) {
       ORDER BY u.full_name ASC
     `;
 
-    const employees = await db.query(queryStr);
+    const rawEmployees = await db.query(queryStr);
+    const now = Date.now();
+    const employees = rawEmployees.map((emp) => {
+      const lastTime = emp.last_location_time ? new Date(emp.last_location_time).getTime() : null;
+      const ageMinutes = lastTime ? (now - lastTime) / (1000 * 60) : 9999;
+      const isStale = ageMinutes > 5;
+
+      let finalStatus = emp.track_location_status || 'LIVE';
+      if (emp.is_gps_off === 1 || emp.last_is_gps_off === 1) {
+        finalStatus = 'UNAVAILABLE';
+      } else if (isStale && (emp.last_latitude != null || emp.latitude != null)) {
+        finalStatus = 'STALE';
+      } else if (emp.location_source === 'NETWORK' || emp.location_source === 'CELL_TOWER' || (emp.accuracy && emp.accuracy > 50)) {
+        finalStatus = 'APPROXIMATE';
+      }
+
+      return {
+        ...emp,
+        location_status: finalStatus,
+        is_stale: isStale,
+        stale_duration_minutes: lastTime ? Math.round(ageMinutes) : null,
+      };
+    });
     const offices = await db.query("SELECT * FROM offices WHERE status = 'active' ORDER BY id DESC");
     return res.json({ employees, offices });
   } catch (error) {
@@ -778,6 +806,22 @@ async function getDashboardReports(req, res) {
   }
 }
 
+// Admin: Monthly employee attendance summaries with working days & percentages (Part 2)
+async function getAdminMonthlyAttendanceSummary(req, res) {
+  try {
+    const { month, search, userId } = req.query;
+    if (userId) {
+      const single = await attendanceSummaryService.getEmployeeMonthlySummary(parseInt(userId, 10), month);
+      return res.json({ success: true, ...single });
+    }
+    const result = await attendanceSummaryService.getAllEmployeesMonthlySummary(month, search);
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('getAdminMonthlyAttendanceSummary error:', error);
+    return res.status(500).json({ error: 'Failed to fetch admin monthly attendance summary', details: error.message });
+  }
+}
+
 module.exports = {
   listUsers,
   createUser,
@@ -786,6 +830,7 @@ module.exports = {
   getLiveLocations,
   getUserRouteHistory,
   getAllAttendance,
+  getAdminMonthlyAttendanceSummary,
   getUserProfile,
   getGpsAlerts,
   resolveGpsAlert,

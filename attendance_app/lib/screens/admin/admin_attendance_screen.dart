@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/api_service.dart';
 import '../../models/attendance_model.dart';
+import '../../models/leave_models.dart';
 import 'admin_employee_attendance_screen.dart';
 
 class AdminAttendanceScreen extends StatefulWidget {
@@ -12,7 +13,8 @@ class AdminAttendanceScreen extends StatefulWidget {
   State<AdminAttendanceScreen> createState() => _AdminAttendanceScreenState();
 }
 
-class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   DateTime _selectedDate = DateTime.now();
   List<AttendanceRecord> _records = [];
   bool _isLoading = true;
@@ -20,16 +22,57 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // Monthly Attendance Summary state (Part 2)
+  DateTime _selectedMonth = DateTime.now();
+  List<AdminEmployeeMonthlySummaryModel> _monthlyEmployees = [];
+  bool _isLoadingMonthly = false;
+  int _totalWorkingDays = 0;
+  int _sundaysCount = 0;
+  int _holidaysCount = 0;
+  final TextEditingController _monthlySearchController = TextEditingController();
+  String _monthlySearchQuery = '';
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.index == 1 && _monthlyEmployees.isEmpty && !_isLoadingMonthly) {
+        _loadMonthlySummary();
+      }
+    });
     _loadAttendance();
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _searchController.dispose();
+    _monthlySearchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadMonthlySummary() async {
+    setState(() => _isLoadingMonthly = true);
+    try {
+      final monthStr = DateFormat('yyyy-MM').format(_selectedMonth);
+      final res = await ApiService().adminGetMonthlyAttendanceSummary(
+        month: monthStr,
+        search: _monthlySearchQuery,
+      );
+      if (mounted) {
+        setState(() {
+          _monthlyEmployees = (res['employees'] as List? ?? []).cast<AdminEmployeeMonthlySummaryModel>();
+          _totalWorkingDays = res['totalWorkingDays'] ?? 0;
+          _sundaysCount = res['sundaysCount'] ?? 0;
+          _holidaysCount = res['holidaysCount'] ?? 0;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading monthly summary: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingMonthly = false);
+    }
   }
 
   Future<void> _loadAttendance() async {
@@ -193,7 +236,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       appBar: AppBar(
         backgroundColor: AppColors.background,
         elevation: 0,
-        title: const Text('Attendance Records', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: const Text('Attendance Console', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
           onPressed: () => Navigator.pop(context),
@@ -213,13 +256,40 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white70),
-            onPressed: _loadAttendance,
+            onPressed: () {
+              if (_tabController.index == 0) {
+                _loadAttendance();
+              } else {
+                _loadMonthlySummary();
+              }
+            },
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppColors.info,
+          labelColor: Colors.white,
+          unselectedLabelColor: AppColors.textMuted,
+          tabs: const [
+            Tab(text: 'Daily Attendance'),
+            Tab(text: 'Monthly Summary'),
+          ],
+        ),
       ),
-      body: Column(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          // Prominent Summary Header: Total Employees Present (Requirement 4)
+          _buildDailyAttendanceView(),
+          _buildMonthlySummaryView(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDailyAttendanceView() {
+    return Column(
+      children: [
+        // Prominent Summary Header: Total Employees Present (Requirement 4)
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -589,7 +659,294 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                       ),
           ),
         ],
+      );
+  }
+
+  Widget _buildMonthlySummaryView() {
+    return Column(
+      children: [
+        // Month Selector Bar with Prev / Next Buttons
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.cardDark,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left, color: Colors.white),
+                onPressed: () {
+                  setState(() {
+                    _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
+                  });
+                  _loadMonthlySummary();
+                },
+              ),
+              Row(
+                children: [
+                  const Icon(Icons.calendar_month, color: AppColors.info, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    DateFormat('MMMM yyyy').format(_selectedMonth),
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ],
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right, color: Colors.white),
+                onPressed: () {
+                  setState(() {
+                    _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+                  });
+                  _loadMonthlySummary();
+                },
+              ),
+            ],
+          ),
+        ),
+
+        // Working Days & Holidays Banner
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              Text(
+                'Total Working: $_totalWorkingDays Days',
+                style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+              Text(
+                'Sundays: $_sundaysCount',
+                style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+              ),
+              Text(
+                'Holidays: $_holidaysCount',
+                style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+
+        // Search Bar for Monthly View
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: TextField(
+            controller: _monthlySearchController,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Search employee name...',
+              hintStyle: const TextStyle(color: Colors.white38, fontSize: 13),
+              prefixIcon: const Icon(Icons.search, color: Colors.white54, size: 20),
+              suffixIcon: _monthlySearchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, color: Colors.white54, size: 18),
+                      onPressed: () {
+                        _monthlySearchController.clear();
+                        setState(() => _monthlySearchQuery = '');
+                        _loadMonthlySummary();
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: AppColors.cardDark,
+              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            onChanged: (val) {
+              setState(() => _monthlySearchQuery = val);
+              _loadMonthlySummary();
+            },
+          ),
+        ),
+
+        // Monthly Employees List
+        Expanded(
+          child: _isLoadingMonthly
+              ? const Center(child: CircularProgressIndicator(color: Colors.white))
+              : _monthlyEmployees.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.calendar_today, size: 48, color: Colors.white24),
+                          SizedBox(height: 12),
+                          Text(
+                            'No monthly summary records found',
+                            style: TextStyle(color: AppColors.textMuted, fontSize: 15),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                      itemCount: _monthlyEmployees.length,
+                      itemBuilder: (ctx, idx) {
+                        final emp = _monthlyEmployees[idx];
+                        final isSalaried = emp.salaryType == 'fixed_monthly';
+                        final isHighAttendance = emp.attendancePercentage >= 80.0;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: AppColors.cardDark,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AdminEmployeeAttendanceScreen(
+                                    employeeId: emp.userId,
+                                    employeeName: emp.fullName,
+                                    employeeDepartment: emp.department,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              emp.fullName,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 15,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '${emp.department ?? "General"} • ${emp.email}',
+                                              style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: isSalaried ? Colors.blue.withOpacity(0.2) : Colors.amber.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: isSalaried ? Colors.blue.withOpacity(0.4) : Colors.amber.withOpacity(0.4),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          isSalaried ? 'Salaried' : 'Daily Wage',
+                                          style: TextStyle(
+                                            color: isSalaried ? Colors.blueAccent : Colors.amberAccent,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  // 4 Key Metrics Row
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _buildMetricTile(
+                                          'Present',
+                                          '${emp.presentDays}d',
+                                          AppColors.success,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: _buildMetricTile(
+                                          'Working',
+                                          '${emp.workingDays}d',
+                                          AppColors.info,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: _buildMetricTile(
+                                          'Absent',
+                                          '${emp.absentDays}d',
+                                          emp.absentDays > 0 ? AppColors.error : AppColors.textMuted,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: _buildMetricTile(
+                                          'Attendance',
+                                          '${emp.attendancePercentage.toStringAsFixed(1)}%',
+                                          isHighAttendance ? AppColors.success : Colors.amberAccent,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  const Divider(color: Colors.white10, height: 1),
+                                  const SizedBox(height: 6),
+                                  const Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'View individual attendance history & selfies',
+                                        style: TextStyle(color: AppColors.info, fontSize: 11),
+                                      ),
+                                      Icon(Icons.arrow_forward_ios, size: 12, color: AppColors.info),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetricTile(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 9.5)),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.bold),
+          ),
+        ],
       ),
     );
+  }
   }
 }

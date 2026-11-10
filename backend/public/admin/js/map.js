@@ -115,39 +115,60 @@ async function refreshLiveMapData() {
       if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return;
       bounds.push([lat, lng]);
 
-      // Determine Location Capturing Method
+      // Determine Location Capturing Method & 5 Distinct Visual Indicators
       const locSource = String(emp.location_source || emp.last_location_source || 'GPS').toUpperCase();
-      const accuracyNum = emp.accuracy ?? emp.last_accuracy ?? emp.check_in_accuracy;
+      const locStatus = String(emp.location_status || 'LIVE').toUpperCase();
+      const accuracyNum = emp.accuracy ?? emp.last_accuracy ?? emp.check_in_accuracy ?? emp.provider_accuracy;
       const accuracyStr = accuracyNum ? `${Math.round(accuracyNum)}m` : 'N/A';
-      const isCellTower = locSource === 'CELL_NETWORK' || locSource === 'CELL_TOWER' || (accuracyNum && accuracyNum > 100);
-      const isWifi = locSource === 'WIFI_NETWORK';
+      
+      const isUnavailable = emp.is_gps_off === 1 || emp.is_gps_off === true || locStatus === 'UNAVAILABLE' || emp.interruption_reason === 'LOCATION_SERVICES_DISABLED';
+      const isStale = emp.is_stale === 1 || emp.is_stale === true || locStatus === 'STALE';
+      const isCellTower = locSource === 'CELL_NETWORK' || locSource === 'CELL_TOWER';
+      const isNetwork = locSource === 'NETWORK' || locSource === 'ANDROID_NETWORK' || locSource === 'WIFI_NETWORK';
+      const isLastKnown = locSource === 'LAST_KNOWN' || isStale;
 
-      let methodBadge = '<span class="badge badge-success" style="font-size:10px;">🛰️ GPS Satellites</span>';
-      let methodFullName = 'Location Services (GPS Satellites)';
-      let methodDescription = 'Captured using hardware GPS satellite receiver';
-      let markerIconChar = '📍';
+      let markerColor = '#10b981'; // Green GPS default
+      let markerIconChar = '🛰️';
+      let methodBadge = '<span class="badge" style="background:#10b981; color:#ffffff; font-size:10px; padding:2px 6px; border-radius:4px;">🛰️ GPS Satellites</span>';
+      let methodFullName = 'GPS Satellite Receiver';
+      let methodDescription = 'High-precision satellite positioning fix';
+      let statusLabel = 'Live On-Duty';
 
-      if (isCellTower) {
-        methodBadge = '<span class="badge badge-warning" style="font-size:10px;">🗼 Cell Tower</span>';
-        methodFullName = 'Mobile Cell Tower Network';
-        methodDescription = 'Captured via cellular tower network triangulation (indoor/low-satellite fallback)';
+      if (isUnavailable) {
+        markerColor = '#ef4444'; // Red Unavailable
+        markerIconChar = '⚠️';
+        methodBadge = '<span class="badge" style="background:#ef4444; color:#ffffff; font-size:10px; padding:2px 6px; border-radius:4px;">⚠️ Location Services OFF</span>';
+        methodFullName = 'Positioning Unavailable';
+        methodDescription = `Android master Location Services disabled (${emp.interruption_reason || 'LOCATION_SERVICES_DISABLED'}). Showing last known coordinates.`;
+        statusLabel = '<span style="color:#ef4444; font-weight:bold;">⚠️ Location Services Disabled</span>';
+      } else if (isLastKnown) {
+        markerColor = '#ea580c'; // Orange Last Known
+        markerIconChar = '⏱️';
+        methodBadge = `<span class="badge" style="background:#ea580c; color:#ffffff; font-size:10px; padding:2px 6px; border-radius:4px;">⏱️ Last Known (STALE ${emp.stale_duration_minutes ? emp.stale_duration_minutes + 'm' : ''})</span>`;
+        methodFullName = 'Last Known Coordinates';
+        methodDescription = `Stale position retained (${emp.stale_duration_minutes || 5}+ min elapsed without fresh GPS fix)`;
+        statusLabel = `<span style="color:#ea580c; font-weight:bold;">Stale Position (${emp.stale_duration_minutes || 5}m old)</span>`;
+      } else if (isCellTower) {
+        markerColor = '#f59e0b'; // Amber Cell Tower
         markerIconChar = '🗼';
-      } else if (isWifi) {
-        methodBadge = '<span class="badge badge-info" style="font-size:10px;">📶 Wi-Fi Network</span>';
-        methodFullName = 'Wi-Fi / Network Services';
-        methodDescription = 'Captured via Wi-Fi network positioning';
+        methodBadge = '<span class="badge" style="background:#f59e0b; color:#ffffff; font-size:10px; padding:2px 6px; border-radius:4px;">🗼 Cell Tower</span>';
+        methodFullName = 'Mobile Network / Cell Tower Positioning';
+        methodDescription = `Cellular positioning (${emp.cell_network_type || 'Cellular'}) fallback`;
+        statusLabel = 'Cellular Position';
+      } else if (isNetwork) {
+        markerColor = '#0ea5e9'; // Blue/Cyan Fused Network
         markerIconChar = '📶';
+        methodBadge = '<span class="badge" style="background:#0ea5e9; color:#ffffff; font-size:10px; padding:2px 6px; border-radius:4px;">📶 Fused Network</span>';
+        methodFullName = 'Android Network / Fused Positioning';
+        methodDescription = 'Android fused network positioning provider';
+        statusLabel = 'Network Position';
       }
 
-      // Marker color logic
-      let markerColor = '#10b981'; // Green inside
-      let statusLabel = 'Inside Geofence';
-
       if (emp.review_status === 'pending_review' || emp.geofence_status === 'outside') {
-        markerColor = '#f59e0b'; // Amber review/outside
-        statusLabel = 'Outside Geofence (Pending Approval)';
+        if (!isUnavailable) {
+          statusLabel += ' • Outside Geofence (Pending Approval)';
+        }
       } else if (emp.is_active_session === 0 || emp.attendance_status === 'checked_out') {
-        markerColor = '#64748b'; // Gray checked out
         statusLabel = 'Checked Out';
       }
 

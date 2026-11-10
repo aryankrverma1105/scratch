@@ -15,7 +15,8 @@ class _AdminLeaveScreenState extends State<AdminLeaveScreen> with SingleTickerPr
   bool _isLoading = true;
   String? _errorMessage;
 
-  String _selectedYear = '2026-2027';
+  String _selectedYear = '2026';
+  List<LeaveYearModel> _availableYears = [];
   List<AdminUserLeaveSummaryModel> _teamSummaries = [];
   List<LeaveRecordModel> _teamLeaves = [];
   List<AttendanceAbsenceModel> _teamAbsences = [];
@@ -43,6 +44,15 @@ class _AdminLeaveScreenState extends State<AdminLeaveScreen> with SingleTickerPr
     });
 
     try {
+      if (_availableYears.isEmpty) {
+        try {
+          _availableYears = await ApiService().getAvailableLeaveYears();
+          if (_availableYears.isNotEmpty && !_availableYears.any((y) => y.code == _selectedYear)) {
+            _selectedYear = _availableYears.first.code;
+          }
+        } catch (_) {}
+      }
+
       final summariesFuture = ApiService().adminGetLeaveSummaries(year: _selectedYear);
       final leavesFuture = ApiService().adminGetLeaveRecords(year: _selectedYear);
       final absencesFuture = ApiService().adminGetAbsences(year: _selectedYear);
@@ -421,6 +431,43 @@ class _AdminLeaveScreenState extends State<AdminLeaveScreen> with SingleTickerPr
                     ),
                     Row(
                       children: [
+                        // Year Selector Dropdown
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _availableYears.any((y) => y.code == _selectedYear) ? _selectedYear : null,
+                              hint: Text(_selectedYear, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                              dropdownColor: AppColors.cardDark,
+                              icon: const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+                              items: (_availableYears.isNotEmpty ? _availableYears : [
+                                LeaveYearModel(code: '2026', name: '2026'),
+                                LeaveYearModel(code: '2025', name: '2025'),
+                                LeaveYearModel(code: '2024', name: '2024'),
+                              ]).map((y) {
+                                return DropdownMenuItem<String>(
+                                  value: y.code,
+                                  child: Text(
+                                    y.name,
+                                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (newYear) {
+                                if (newYear != null && newYear != _selectedYear) {
+                                  setState(() => _selectedYear = newYear);
+                                  _loadAllAdminData();
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
                         IconButton(
                           icon: const Icon(Icons.refresh, color: Colors.white70),
                           onPressed: _loadAllAdminData,

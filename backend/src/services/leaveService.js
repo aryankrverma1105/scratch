@@ -27,11 +27,39 @@ async function ensureLeaveYearExists(leaveYearCode) {
 }
 
 /**
+ * Check if an employee is classified as Salaried (fixed_monthly)
+ * Annual leave calendar applies strictly to salaried employees.
+ */
+async function isSalariedEmployee(userId) {
+  const config = await db.get(
+    'SELECT salary_type FROM employee_salary_configs WHERE user_id = ?',
+    [userId]
+  );
+  return Boolean(config && config.salary_type === 'fixed_monthly');
+}
+
+/**
  * Get or create user's leave balance record for a leave year
  */
 async function getUserLeaveBalance(userId, leaveYearCode) {
   const yearCode = leaveYearCode || getLeaveYear();
   await ensureLeaveYearExists(yearCode);
+
+  const isSalaried = await isSalariedEmployee(userId);
+  if (!isSalaried) {
+    return {
+      userId,
+      leaveYear: yearCode,
+      isSalaried: false,
+      accrued: 0,
+      used: 0,
+      expired: 0,
+      balance: 0,
+      eligibleForLeaveCalendar: false,
+      message: 'Annual leave calendar and paid leave entitlements apply only to salaried employees. Your daily wages are calculated based on present days.',
+      updatedAt: null,
+    };
+  }
 
   let balanceRow = await db.get(
     'SELECT * FROM leave_balances WHERE user_id = ? AND leave_year = ?',
@@ -49,13 +77,31 @@ async function getUserLeaveBalance(userId, leaveYearCode) {
     );
   }
 
+  // Calculate cumulative present days in this calendar leave year
+  const yearStartStr = `${yearCode.split('-')[0]}-01-01`;
+  const yearEndStr = `${yearCode.split('-')[0]}-12-31`;
+  const presentCountRow = await db.get(
+    `SELECT COUNT(DISTINCT date) as count
+     FROM attendance
+     WHERE user_id = ? AND date >= ? AND date <= ?
+       AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))
+       AND (review_status IS NULL OR review_status NOT IN ('pending_review', 'rejected'))`,
+    [userId, yearStartStr, yearEndStr]
+  );
+  const cumulativePresentDays = presentCountRow?.count || 0;
+
   return {
     userId,
     leaveYear: yearCode,
+    isSalaried: true,
+    eligibleForLeaveCalendar: true,
     accrued: balanceRow ? balanceRow.accrued : 0,
     used: balanceRow ? balanceRow.used : 0,
     expired: balanceRow ? balanceRow.expired : 0,
     balance: balanceRow ? balanceRow.balance : 0,
+    cumulativePresentDays,
+    requiredPresentDays: 26,
+    is26DayRequirementMet: cumulativePresentDays >= 26,
     updatedAt: balanceRow ? balanceRow.updated_at : null,
   };
 }
@@ -113,24 +159,27 @@ async function accrueMonthlyLeaves(yearMonth, force = false) {
 
     if (existing) continue;
 
-    // 26 Present Days Eligibility Check for Salaried Employees (Requirement 8)
+    // Strictly salaried employees only (Requirement: Salaried Leave Calendar applies strictly to Salaried employees)
     const empConfig = await db.get('SELECT salary_type FROM employee_salary_configs WHERE user_id = ?', [user.id]);
-    if (empConfig && empConfig.salary_type === 'fixed_monthly') {
-      const yearStartStr = `${leaveYearCode.split('-')[0]}-01-01`;
-      const monthEndStr = `${yearMonth}-31`;
-      const presentCountRow = await db.get(
-        `SELECT COUNT(DISTINCT date) as count
-         FROM attendance
-         WHERE user_id = ? AND date >= ? AND date <= ?
-           AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))
-           AND (review_status IS NULL OR review_status NOT IN ('pending_review', 'rejected'))`,
-        [user.id, yearStartStr, monthEndStr]
-      );
-      const cumulativePresent = presentCountRow?.count || 0;
-      if (cumulativePresent < 26) {
-        // Does not meet 26 cumulative present days eligibility condition
-        continue;
-      }
+    if (!empConfig || empConfig.salary_type !== 'fixed_monthly') {
+      continue; // Daily wage or unconfigured employees do NOT accrue salaried leave
+    }
+
+    // 26 Present Days Eligibility Check for Salaried Employees (Requirement 8)
+    const yearStartStr = `${leaveYearCode.split('-')[0]}-01-01`;
+    const monthEndStr = `${yearMonth}-31`;
+    const presentCountRow = await db.get(
+      `SELECT COUNT(DISTINCT date) as count
+       FROM attendance
+       WHERE user_id = ? AND date >= ? AND date <= ?
+         AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))
+         AND (review_status IS NULL OR review_status NOT IN ('pending_review', 'rejected'))`,
+      [user.id, yearStartStr, monthEndStr]
+    );
+    const cumulativePresent = presentCountRow?.count || 0;
+    if (cumulativePresent < 26) {
+      // Does not meet 26 cumulative present days eligibility condition
+      continue;
     }
 
     await db.withTransaction(async (tx) => {
@@ -356,8 +405,50 @@ async function calculateLeaveRequest(userId, startDate, endDate) {
   // Validate 7-day continuous limit & overlap
   validateContinuousLeave(startDate, endDate, existingLeaves);
 
-  // Current balance
+  // Current balance & salaried eligibility
   const balanceInfo = await getUserLeaveBalance(userId, leaveYearCode);
+  if (!balanceInfo.isSalaried) {
+    return {
+      startDate,
+      endDate,
+      leaveYear: leaveYearCode,
+      isSalaried: false,
+      isEligible: false,
+      ineligibleReason: 'Annual paid leave entitlement applies only to salaried employees. Daily-wage employees receive attendance-based daily wages.',
+    };
+  }
+
+  // 26 cumulative present days check for the calendar leave year
+  const yearStartStr = `${leaveYearCode.split('-')[0]}-01-01`;
+  const presentCountRow = await db.get(
+    `SELECT COUNT(DISTINCT date) as count
+     FROM attendance
+     WHERE user_id = ? AND date >= ? AND date <= ?
+       AND (status IS NULL OR status NOT IN ('cancelled', 'rejected'))
+       AND (review_status IS NULL OR review_status NOT IN ('pending_review', 'rejected'))`,
+    [userId, yearStartStr, startDate]
+  );
+  const cumulativePresent = presentCountRow?.count || 0;
+  if (cumulativePresent < 26) {
+    return {
+      startDate,
+      endDate,
+      leaveYear: leaveYearCode,
+      isSalaried: true,
+      calendarDays: breakdown.calendarDays,
+      workingDays: breakdown.workingDays,
+      sundaysCount: breakdown.sundaysCount,
+      holidaysCount: breakdown.holidaysCount,
+      daysDeducted: breakdown.daysDeducted,
+      currentBalance: balanceInfo.balance,
+      balanceAfter: balanceInfo.balance,
+      cumulativePresentDays: cumulativePresent,
+      requiredPresentDays: 26,
+      isEligible: false,
+      ineligibleReason: `Leave approval eligibility requires at least 26 valid present days in the calendar leave year ${leaveYearCode}. You currently have ${cumulativePresent} present days.`,
+    };
+  }
+
   const balanceAfter = balanceInfo.balance - breakdown.daysDeducted;
   const isEligible = balanceAfter >= 0;
 
@@ -365,6 +456,7 @@ async function calculateLeaveRequest(userId, startDate, endDate) {
     startDate,
     endDate,
     leaveYear: leaveYearCode,
+    isSalaried: true,
     calendarDays: breakdown.calendarDays,
     workingDays: breakdown.workingDays,
     sundaysCount: breakdown.sundaysCount,
@@ -372,6 +464,8 @@ async function calculateLeaveRequest(userId, startDate, endDate) {
     daysDeducted: breakdown.daysDeducted,
     currentBalance: balanceInfo.balance,
     balanceAfter: isEligible ? balanceAfter : balanceInfo.balance,
+    cumulativePresentDays: cumulativePresent,
+    requiredPresentDays: 26,
     isEligible,
     ineligibleReason: isEligible
       ? null
@@ -909,7 +1003,15 @@ async function performAnnualLeaveYearReset(fromYear, toYear) {
   };
 }
 
+async function getAvailableLeaveYears() {
+  const rows = await db.query(
+    'SELECT code, code as name, start_date, end_date, is_active FROM leave_years ORDER BY start_date DESC'
+  );
+  return rows || [];
+}
+
 module.exports = {
+  getAvailableLeaveYears,
   ensureLeaveYearExists,
   getUserLeaveBalance,
   accrueMonthlyLeaves,

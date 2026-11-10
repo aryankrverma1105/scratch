@@ -14,6 +14,7 @@ import '../../core/services/reverse_geocoding_service.dart';
 import 'permissions_screen.dart';
 import '../../models/attendance_model.dart';
 import '../../models/user_model.dart';
+import '../../models/leave_models.dart';
 import 'profile_screen.dart';
 import 'leave_management_screen.dart';
 import 'employee_salary_screen.dart';
@@ -38,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   UserModel? _user;
   AttendanceRecord? _activeAttendance;
+  MonthlyAttendanceSummaryModel? _monthlySummary;
   bool _isLoading = true;
   bool _isActionLoading = false;
   Timer? _workTimer;
@@ -131,6 +133,13 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         _activeAttendance = null;
         _stopWorkTimer();
+      }
+
+      // Load monthly attendance summary for current month
+      try {
+        _monthlySummary = await ApiService().getMonthlyAttendanceSummary();
+      } catch (sumErr) {
+        debugPrint('Error loading monthly attendance summary: $sumErr');
       }
     } catch (e) {
       debugPrint('Error loading initial data: $e');
@@ -942,6 +951,148 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
 
+                        // Monthly Employee Attendance Summary Card (Requirement Part 2)
+                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(color: Colors.white12),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black38,
+                                blurRadius: 12,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.info.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: const Icon(Icons.calendar_month, color: AppColors.info, size: 20),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            _monthlySummary?.monthName ?? DateFormat('MMMM yyyy').format(DateTime.now()),
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          const Text(
+                                            'Monthly Attendance Summary',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: AppColors.textMuted,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.refresh, color: AppColors.textMuted, size: 18),
+                                    onPressed: () async {
+                                      final s = await ApiService().getMonthlyAttendanceSummary().catchError((_) => null);
+                                      if (mounted && s != null) {
+                                        setState(() => _monthlySummary = s);
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              // 4 Key Metrics Grid
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildSummaryMetric(
+                                      title: 'Present Days',
+                                      value: '${_monthlySummary?.presentDays ?? 0} Days',
+                                      color: AppColors.success,
+                                      icon: Icons.check_circle_outline,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _buildSummaryMetric(
+                                      title: 'Working Days',
+                                      value: '${_monthlySummary?.totalWorkingDays ?? 0} Days',
+                                      color: AppColors.info,
+                                      icon: Icons.work_outline,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildSummaryMetric(
+                                      title: 'Absent Days',
+                                      value: '${_monthlySummary?.absentDays ?? 0} Days',
+                                      color: (_monthlySummary?.absentDays ?? 0) > 0 ? AppColors.error : AppColors.textMuted,
+                                      icon: Icons.cancel_outlined,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: _buildSummaryMetric(
+                                      title: 'Attendance %',
+                                      value: '${(_monthlySummary?.attendancePercentage ?? 0.0).toStringAsFixed(1)}%',
+                                      color: (_monthlySummary?.attendancePercentage ?? 0.0) >= 80 ? Colors.purpleAccent : Colors.amberAccent,
+                                      icon: Icons.pie_chart_outline,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (_monthlySummary != null) ...[
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.04),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Sundays Excluded: ${_monthlySummary!.sundaysCount}',
+                                        style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+                                      ),
+                                      Text(
+                                        'Company Holidays: ${_monthlySummary!.holidaysCount}',
+                                        style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+
                         // Leave Management System Portal Card (Available for both Employees & Admins)
                         const SizedBox(height: 20),
                         Container(
@@ -1523,6 +1674,49 @@ class _HomeScreenState extends State<HomeScreen> {
             style: const TextStyle(
               color: AppColors.textMuted,
               fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryMetric({
+    required String title,
+    required String value,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 14),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],

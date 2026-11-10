@@ -7,6 +7,7 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 router.use(authenticateToken);
 
 // --- EMPLOYEE & GENERAL LEAVE ROUTES ---
+router.get('/years', leaveController.getLeaveYears);
 router.get('/balance', leaveController.getMyLeaveBalance);
 router.get('/summary', leaveController.getMyLeaveSummary);
 router.get('/history', leaveController.getMyLeaveHistory);

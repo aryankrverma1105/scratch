@@ -15,11 +15,18 @@ class LiveEmployeeLocation {
   final bool isGpsOff;
   final DateTime? lastLocationTime;
   final String? locationSource;
+  final String? locationStatus;
+  final String? cellNetworkType;
+  final double? providerAccuracy;
+  final String? interruptionReason;
+  final bool isStale;
+  final int? staleDurationMinutes;
   final String? appVersion;
   final int? batteryPercentage;
   final String? networkStatus;
   final String? officeName;
   final double? distanceFromOffice;
+  final bool isMocked;
 
   LiveEmployeeLocation({
     required this.userId,
@@ -39,6 +46,12 @@ class LiveEmployeeLocation {
     this.isMocked = false,
     this.lastLocationTime,
     this.locationSource,
+    this.locationStatus,
+    this.cellNetworkType,
+    this.providerAccuracy,
+    this.interruptionReason,
+    this.isStale = false,
+    this.staleDurationMinutes,
     this.appVersion,
     this.batteryPercentage,
     this.networkStatus,
@@ -46,10 +59,37 @@ class LiveEmployeeLocation {
     this.distanceFromOffice,
   });
 
-  final bool isMocked;
   bool get isWorking => attendanceStatus == 'checked_in';
   bool get hasValidLocation => lastLatitude != null && lastLongitude != null;
-  bool get isCellTower => locationSource == 'CELL_NETWORK' || locationSource == 'CELL_TOWER' || (lastAccuracy != null && lastAccuracy! > 100);
+
+  // Visual status indicators
+  bool get isUnavailable =>
+      isGpsOff ||
+      locationStatus == 'UNAVAILABLE' ||
+      interruptionReason == 'LOCATION_SERVICES_DISABLED' ||
+      interruptionReason == 'LOCATION_PERMISSION_REVOKED';
+
+  bool get isStaleFlag => isStale || locationStatus == 'STALE';
+
+  bool get isCellTower =>
+      locationSource == 'CELL_TOWER' ||
+      locationSource == 'CELL_NETWORK';
+
+  bool get isNetwork =>
+      locationSource == 'NETWORK' ||
+      locationSource == 'ANDROID_NETWORK';
+
+  bool get isLastKnown =>
+      locationSource == 'LAST_KNOWN' ||
+      locationStatus == 'STALE' ||
+      isStale;
+
+  bool get isGps =>
+      (locationSource == 'GPS' || locationSource == null) &&
+      !isCellTower &&
+      !isNetwork &&
+      !isLastKnown &&
+      !isUnavailable;
 
   factory LiveEmployeeLocation.fromJson(Map<String, dynamic> json) {
     final lat = (json['last_latitude'] as num?)?.toDouble() ??
@@ -59,7 +99,8 @@ class LiveEmployeeLocation {
         (json['longitude'] as num?)?.toDouble() ??
         (json['check_in_lng'] as num?)?.toDouble();
     final acc = (json['last_accuracy'] as num?)?.toDouble() ??
-        (json['accuracy'] as num?)?.toDouble();
+        (json['accuracy'] as num?)?.toDouble() ??
+        (json['provider_accuracy'] as num?)?.toDouble();
     final spd = (json['last_speed'] as num?)?.toDouble();
 
     final isGpsOff = json['is_gps_off'] == 1 ||
@@ -67,7 +108,13 @@ class LiveEmployeeLocation {
         json['last_is_gps_off'] == 1 ||
         json['last_is_gps_off'] == true ||
         json['last_location_services_enabled'] == 0 ||
-        json['last_location_services_enabled'] == false;
+        json['last_location_services_enabled'] == false ||
+        json['interruption_reason'] == 'LOCATION_SERVICES_DISABLED' ||
+        json['location_status'] == 'UNAVAILABLE';
+
+    final isStale = json['is_stale'] == 1 ||
+        json['is_stale'] == true ||
+        json['location_status'] == 'STALE';
 
     return LiveEmployeeLocation(
       userId: json['user_id'] is int ? json['user_id'] : int.tryParse(json['user_id'].toString()) ?? 0,
@@ -89,6 +136,12 @@ class LiveEmployeeLocation {
           ? DateTime.tryParse((json['last_location_time'] ?? json['last_update_time']).toString())?.toLocal()
           : null,
       locationSource: json['last_location_source']?.toString() ?? json['location_source']?.toString(),
+      locationStatus: json['location_status']?.toString(),
+      cellNetworkType: json['cell_network_type']?.toString(),
+      providerAccuracy: (json['provider_accuracy'] as num?)?.toDouble(),
+      interruptionReason: json['interruption_reason']?.toString(),
+      isStale: isStale,
+      staleDurationMinutes: (json['stale_duration_minutes'] as num?)?.toInt(),
       appVersion: json['user_app_version']?.toString() ?? json['app_version']?.toString(),
       batteryPercentage: (json['last_battery_percentage'] as num?)?.toInt() ?? (json['battery_percentage'] as num?)?.toInt(),
       networkStatus: json['last_network_status']?.toString() ?? json['network_status']?.toString(),
@@ -96,6 +149,7 @@ class LiveEmployeeLocation {
       distanceFromOffice: (json['distance_from_office'] as num?)?.toDouble(),
     );
   }
+}
 }
 
 class RoutePoint {
