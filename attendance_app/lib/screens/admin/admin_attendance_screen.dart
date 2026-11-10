@@ -948,5 +948,4 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> with Sing
       ),
     );
   }
-  }
 }

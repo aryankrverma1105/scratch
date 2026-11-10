@@ -150,7 +150,6 @@ class LiveEmployeeLocation {
     );
   }
 }
-}
 
 class RoutePoint {
   final int id;
