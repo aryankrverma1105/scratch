@@ -1032,6 +1032,8 @@ class _AdminEmployeeAttendanceScreenState
                                     address: rec.checkInAddress ?? 'Lat: ${rec.checkInLat}, Lng: ${rec.checkInLng}',
                                     accuracy: rec.checkInAccuracy,
                                     isMocked: rec.checkInIsMocked,
+                                    locationSource: rec.locationSource,
+                                    isCellFallback: rec.isCellNetworkFallback,
                                   ),
 
                                   if (rec.checkOutTime != null) ...[
@@ -1044,6 +1046,8 @@ class _AdminEmployeeAttendanceScreenState
                                       address: rec.checkOutAddress ?? 'Lat: ${rec.checkOutLat}, Lng: ${rec.checkOutLng}',
                                       accuracy: rec.checkOutAccuracy,
                                       isMocked: rec.checkOutIsMocked,
+                                      locationSource: null,
+                                      isCellFallback: (rec.checkOutAccuracy != null && rec.checkOutAccuracy! > 100),
                                     ),
                                   ],
 
@@ -1166,7 +1170,15 @@ class _AdminEmployeeAttendanceScreenState
     required String address,
     required double? accuracy,
     required bool isMocked,
+    String? locationSource,
+    bool isCellFallback = false,
   }) {
+    final effectiveIsCell = isCellFallback ||
+        locationSource == 'CELL_NETWORK' ||
+        locationSource == 'CELL_TOWER' ||
+        locationSource == 'NETWORK' ||
+        (accuracy != null && accuracy > 100);
+
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -1216,11 +1228,34 @@ class _AdminEmployeeAttendanceScreenState
           ),
           if (accuracy != null)
             Padding(
-              padding: const EdgeInsets.only(left: 22, top: 2),
-              child: Text(
-                'GPS Accuracy: ±${accuracy.toStringAsFixed(1)}m',
-                style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
-              ),
+              padding: const EdgeInsets.only(left: 22, top: 4),
+              child: effectiveIsCell
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.amber.withOpacity(0.4), width: 0.8),
+                          ),
+                          child: const Text(
+                            '📡 Cell Tower Fallback',
+                            style: TextStyle(color: Colors.amber, fontSize: 9.5, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Accuracy: ±${accuracy.toStringAsFixed(0)}m',
+                          style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+                        ),
+                      ],
+                    )
+                  : Text(
+                      'GPS Accuracy: ±${accuracy.toStringAsFixed(1)}m',
+                      style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
+                    ),
             ),
         ],
       ),

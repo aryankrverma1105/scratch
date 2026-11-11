@@ -1,5 +1,8 @@
 import 'dart:io';
+import 'dart:convert';
+import 'dart:async';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/user_model.dart';
@@ -27,10 +30,13 @@ class ApiService {
   late Dio _dio;
   String _baseUrl = defaultBaseUrl;
   String? _token;
+  String? _refreshToken;
   UserModel? _currentUser;
+  Completer<bool>? _refreshCompleter;
 
   String get baseUrl => _baseUrl;
   String? get token => _token;
+  String? get refreshTokenValue => _refreshToken;
   UserModel? get currentUser => _currentUser;
 
   static String formatDioError(dynamic error) {
@@ -94,7 +100,13 @@ class ApiService {
       _token = null;
     }
 
-    // Migration from SharedPreferences if secure storage was empty
+    try {
+      _refreshToken = await _secureStorage.read(key: 'refresh_token');
+    } catch (_) {
+      _refreshToken = null;
+    }
+
+    // Migration / fallback from SharedPreferences
     if (_token == null && prefs.containsKey('jwt_token')) {
       final legacyToken = prefs.getString('jwt_token');
       if (legacyToken != null) {
@@ -103,6 +115,24 @@ class ApiService {
           await _secureStorage.write(key: 'jwt_token', value: legacyToken);
         } catch (_) {}
       }
+    }
+
+    if (_refreshToken == null && prefs.containsKey('refresh_token')) {
+      final legacyRefresh = prefs.getString('refresh_token');
+      if (legacyRefresh != null) {
+        _refreshToken = legacyRefresh;
+        try {
+          await _secureStorage.write(key: 'refresh_token', value: legacyRefresh);
+        } catch (_) {}
+      }
+    }
+
+    // Restore cached user profile if present
+    final cachedProfile = prefs.getString('cached_user_profile');
+    if (cachedProfile != null) {
+      try {
+        _currentUser = UserModel.fromJson(jsonDecode(cachedProfile));
+      } catch (_) {}
     }
 
     _dio = Dio(
@@ -125,7 +155,26 @@ class ApiService {
           }
           return handler.next(options);
         },
-        onError: (DioException e, handler) {
+        onError: (DioException e, handler) async {
+          // If 401 received on a non-auth request and refresh token exists: silently refresh!
+          if (e.response?.statusCode == 401 &&
+              _refreshToken != null &&
+              !e.requestOptions.path.contains('/api/auth/login') &&
+              !e.requestOptions.path.contains('/api/auth/refresh')) {
+            final refreshed = await refreshToken();
+            if (refreshed && _token != null) {
+              final opts = e.requestOptions;
+              opts.headers['Authorization'] = 'Bearer $_token';
+              try {
+                final cloneReq = await _dio.fetch(opts);
+                return handler.resolve(cloneReq);
+              } catch (retryErr) {
+                if (retryErr is DioException) {
+                  return handler.next(retryErr);
+                }
+              }
+            }
+          }
           return handler.next(e);
         },
       ),
@@ -220,25 +269,47 @@ class ApiService {
     }
   }
 
-  Future<void> setToken(String? token) async {
+  Future<void> setToken(String? token, {String? refreshToken}) async {
     _token = token;
+    if (refreshToken != null) {
+      _refreshToken = refreshToken;
+    }
     final prefs = await SharedPreferences.getInstance();
     if (token != null) {
       try {
         await _secureStorage.write(key: 'jwt_token', value: token);
+        if (_refreshToken != null) {
+          await _secureStorage.write(key: 'refresh_token', value: _refreshToken!);
+        }
       } catch (_) {}
       await prefs.setString('jwt_token', token);
+      if (_refreshToken != null) {
+        await prefs.setString('refresh_token', _refreshToken!);
+      }
     } else {
+      _token = null;
+      _refreshToken = null;
+      _currentUser = null;
       try {
         await _secureStorage.delete(key: 'jwt_token');
+        await _secureStorage.delete(key: 'refresh_token');
       } catch (_) {}
       await prefs.remove('jwt_token');
-      _currentUser = null;
+      await prefs.remove('refresh_token');
+      await prefs.remove('cached_user_profile');
     }
   }
 
-  void setCurrentUser(UserModel? user) {
+  Future<void> setCurrentUser(UserModel? user) async {
     _currentUser = user;
+    final prefs = await SharedPreferences.getInstance();
+    if (user != null) {
+      try {
+        await prefs.setString('cached_user_profile', jsonEncode(user.toJson()));
+      } catch (_) {}
+    } else {
+      await prefs.remove('cached_user_profile');
+    }
   }
 
   // --- Auth Endpoints ---
@@ -257,8 +328,11 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = response.data;
-        await setToken(data['token']);
-        _currentUser = UserModel.fromJson(data['user']);
+        final accessToken = data['token']?.toString();
+        final refreshTokenStr = data['refreshToken']?.toString();
+        await setToken(accessToken, refreshToken: refreshTokenStr);
+        final user = UserModel.fromJson(data['user']);
+        await setCurrentUser(user);
         return data;
       }
       throw Exception(response.data['error'] ?? 'Login failed');
@@ -267,20 +341,146 @@ class ApiService {
     }
   }
 
+  Future<bool> refreshToken() async {
+    if (_refreshCompleter != null) {
+      return _refreshCompleter!.future;
+    }
+
+    _refreshCompleter = Completer<bool>();
+
+    try {
+      if (_refreshToken == null) {
+        final prefs = await SharedPreferences.getInstance();
+        _refreshToken = prefs.getString('refresh_token');
+        if (_refreshToken == null) {
+          try {
+            _refreshToken = await _secureStorage.read(key: 'refresh_token');
+          } catch (_) {}
+        }
+      }
+
+      if (_refreshToken == null || _refreshToken!.isEmpty) {
+        _refreshCompleter!.complete(false);
+        _refreshCompleter = null;
+        return false;
+      }
+
+      // Use a dedicated un-intercepted Dio instance for refresh
+      final refreshDio = Dio(
+        BaseOptions(
+          baseUrl: _baseUrl,
+          connectTimeout: const Duration(seconds: 12),
+          receiveTimeout: const Duration(seconds: 12),
+          headers: {'Content-Type': 'application/json'},
+        ),
+      );
+
+      final response = await refreshDio.post(
+        '/api/auth/refresh',
+        data: {'refreshToken': _refreshToken},
+      );
+
+      if (response.statusCode == 200 && response.data['success'] == true) {
+        final newAccessToken = response.data['token']?.toString();
+        final newRefreshToken = response.data['refreshToken']?.toString();
+
+        if (newAccessToken != null) {
+          await setToken(newAccessToken, refreshToken: newRefreshToken);
+          if (response.data['user'] != null) {
+            await setCurrentUser(UserModel.fromJson(response.data['user']));
+          }
+          debugPrint('Silent token refresh successful');
+          _refreshCompleter!.complete(true);
+          _refreshCompleter = null;
+          return true;
+        }
+      }
+
+      _refreshCompleter!.complete(false);
+      _refreshCompleter = null;
+      return false;
+    } on DioException catch (e) {
+      debugPrint('Silent token refresh failed: ${e.response?.statusCode} - ${e.message}');
+      // Only if account is deactivated or session revoked do we wipe credentials
+      if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+        final errCode = e.response?.data?['code'];
+        if (errCode == 'SESSION_REVOKED' || errCode == 'ACCOUNT_DEACTIVATED' || errCode == 'USER_NOT_FOUND') {
+          await setToken(null);
+        }
+      }
+      _refreshCompleter!.complete(false);
+      _refreshCompleter = null;
+      return false;
+    } catch (e) {
+      debugPrint('Silent token refresh error: $e');
+      _refreshCompleter!.complete(false);
+      _refreshCompleter = null;
+      return false;
+    }
+  }
+
   Future<UserModel?> getProfile() async {
     try {
       final response = await _dio.get('/api/auth/me');
       if (response.statusCode == 200) {
         _currentUser = UserModel.fromJson(response.data['user']);
+        await setCurrentUser(_currentUser);
         return _currentUser;
       }
       return null;
+    } on DioException catch (e) {
+      // If server explicitly rejected with 401 or 403, and token couldn't be refreshed
+      if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+        final errCode = e.response?.data?['code'];
+        if (errCode == 'ACCOUNT_DEACTIVATED' || errCode == 'USER_NOT_FOUND') {
+          await setToken(null);
+          return null;
+        }
+      }
+      // On temporary network errors / offline cold-start: RESTORE CACHED USER to avoid kicking offline users!
+      if (_currentUser != null) return _currentUser;
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('cached_user_profile');
+      if (cached != null) {
+        try {
+          _currentUser = UserModel.fromJson(jsonDecode(cached));
+          return _currentUser;
+        } catch (_) {}
+      }
+      return null;
     } catch (_) {
+      if (_currentUser != null) return _currentUser;
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString('cached_user_profile');
+      if (cached != null) {
+        try {
+          _currentUser = UserModel.fromJson(jsonDecode(cached));
+          return _currentUser;
+        } catch (_) {}
+      }
       return null;
     }
   }
 
   Future<void> logout() async {
+    try {
+      if (_token != null || _refreshToken != null) {
+        final logoutDio = Dio(
+          BaseOptions(
+            baseUrl: _baseUrl,
+            connectTimeout: const Duration(seconds: 5),
+            headers: {
+              if (_token != null) 'Authorization': 'Bearer $_token',
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+        await logoutDio.post(
+          '/api/auth/logout',
+          data: {if (_refreshToken != null) 'refreshToken': _refreshToken},
+        ).catchError((_) => Response(requestOptions: RequestOptions(path: '')));
+      }
+    } catch (_) {}
     await setToken(null);
   }
 

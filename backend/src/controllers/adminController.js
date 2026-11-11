@@ -202,6 +202,11 @@ async function updateUser(req, res) {
       await db.run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
     }
 
+    // If account was deactivated or password reset, revoke all active sessions immediately
+    if (is_active === 0 || is_active === false || password) {
+      await db.run('UPDATE user_sessions SET is_revoked = 1 WHERE user_id = ?', [userId]);
+    }
+
     const updated = await db.get(
       'SELECT id, email, username, full_name, role, department, phone, is_active, created_at FROM users WHERE id = ?',
       [userId]
@@ -822,11 +827,38 @@ async function getAdminMonthlyAttendanceSummary(req, res) {
   }
 }
 
+async function revokeUserSessions(req, res) {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    const targetUser = await db.get('SELECT id, full_name, email FROM users WHERE id = ?', [userId]);
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await db.run('UPDATE user_sessions SET is_revoked = 1 WHERE user_id = ?', [userId]);
+
+    await logActivity({
+      req,
+      action: 'USER_SESSIONS_REVOKED',
+      entityType: 'user',
+      entityId: userId,
+      targetUserId: userId,
+      targetUserName: targetUser.full_name,
+      details: `Revoked all active login sessions for ${targetUser.full_name} (${targetUser.email})`,
+    });
+
+    return res.json({ success: true, message: `All active sessions for ${targetUser.full_name} have been revoked.` });
+  } catch (error) {
+    return res.status(500).json({ error: 'Failed to revoke user sessions', details: error.message });
+  }
+}
+
 module.exports = {
   listUsers,
   createUser,
   updateUser,
   deleteUser,
+  revokeUserSessions,
   getLiveLocations,
   getUserRouteHistory,
   getAllAttendance,

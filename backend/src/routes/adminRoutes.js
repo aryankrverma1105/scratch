@@ -21,6 +21,7 @@ router.post('/users', validateBody(createUserSchema), adminController.createUser
 router.get('/users/:id/profile', adminController.getUserProfile);
 router.put('/users/:id', adminController.updateUser);
 router.delete('/users/:id', adminController.deleteUser);
+router.post('/users/:id/revoke-sessions', adminController.revokeUserSessions);
 
 // Multi-Office Geofencing Management
 router.get('/offices', officeController.listOffices);

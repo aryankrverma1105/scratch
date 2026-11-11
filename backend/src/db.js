@@ -1211,6 +1211,46 @@ function initDatabase() {
         }
       },
     },
+    {
+      version: 15,
+      name: 'user_sessions_for_persistent_auth',
+      up: async () => {
+        const sessionTable = isPostgres
+          ? `CREATE TABLE IF NOT EXISTS user_sessions (
+              id SERIAL PRIMARY KEY,
+              user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              refresh_token_hash VARCHAR(255) UNIQUE NOT NULL,
+              device_info VARCHAR(255),
+              device_model VARCHAR(100),
+              device_os VARCHAR(50),
+              app_version VARCHAR(50),
+              ip_address VARCHAR(100),
+              is_revoked INTEGER NOT NULL DEFAULT 0,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              expires_at TIMESTAMP
+            )`
+          : `CREATE TABLE IF NOT EXISTS user_sessions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              refresh_token_hash TEXT UNIQUE NOT NULL,
+              device_info TEXT,
+              device_model TEXT,
+              device_os TEXT,
+              app_version TEXT,
+              ip_address TEXT,
+              is_revoked INTEGER NOT NULL DEFAULT 0,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              expires_at DATETIME
+            )`;
+        await run(sessionTable);
+        try {
+          await run('CREATE INDEX IF NOT EXISTS idx_user_sessions_token_hash ON user_sessions(refresh_token_hash)');
+          await run('CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)');
+        } catch (_) {}
+      },
+    },
   ];
 
   for (const m of migrations) {

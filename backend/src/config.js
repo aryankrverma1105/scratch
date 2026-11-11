@@ -22,7 +22,7 @@ function validateProductionSecurity() {
 module.exports = {
   PORT: process.env.PORT || 5050,
   JWT_SECRET: process.env.JWT_SECRET || 'super_secret_attendance_jwt_key_2026',
-  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '12h', // Access token lifetime 12h
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '24h', // Access token lifetime (refreshed automatically via persistent session)
   DATABASE_URL: process.env.DATABASE_URL || '',
   SQLITE_PATH: process.env.SQLITE_PATH || path.join(__dirname, '..', 'data', 'attendance.db'),
   UPLOAD_DIR: path.join(__dirname, '..', 'uploads'),

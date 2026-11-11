@@ -23,6 +23,8 @@ class AttendanceRecord {
   final String? geofenceStatus;
   final String? reviewStatus;
   final String? reviewReason;
+  final String? locationSource;
+  final int? batteryPercentage;
 
   AttendanceRecord({
     required this.id,
@@ -49,11 +51,18 @@ class AttendanceRecord {
     this.geofenceStatus,
     this.reviewStatus,
     this.reviewReason,
+    this.locationSource,
+    this.batteryPercentage,
   });
 
   bool get isCurrentlyCheckedIn => status == 'checked_in';
   bool get isPendingReview => reviewStatus == 'pending_review';
   bool get isReviewRejected => reviewStatus == 'rejected';
+  bool get isCellNetworkFallback =>
+      locationSource == 'CELL_NETWORK' ||
+      locationSource == 'CELL_TOWER' ||
+      locationSource == 'NETWORK' ||
+      (checkInAccuracy != null && checkInAccuracy! > 100);
 
   Duration? get duration {
     if (checkOutTime != null) {
@@ -90,6 +99,8 @@ class AttendanceRecord {
       geofenceStatus: json['geofence_status'],
       reviewStatus: json['review_status'],
       reviewReason: json['review_reason'],
+      locationSource: json['location_source']?.toString(),
+      batteryPercentage: (json['battery_percentage'] as num?)?.toInt(),
     );
   }
 }

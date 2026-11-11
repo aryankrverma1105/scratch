@@ -40,7 +40,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
 
-    if (ApiService().token != null) {
+    if (ApiService().token != null || ApiService().refreshTokenValue != null || ApiService().currentUser != null) {
       final user = await ApiService().getProfile();
       if (user != null && mounted) {
         Navigator.pushReplacement(

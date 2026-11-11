@@ -42,10 +42,35 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
   }
 
   const res = await fetch(endpoint, options);
-  if (res.status === 401) {
-    // Unauthorized / session expired
+  if (res.status === 401 && !endpoint.includes('/api/auth/login') && !endpoint.includes('/api/auth/refresh')) {
+    // Attempt silent refresh via refresh token
+    const refreshToken = localStorage.getItem('sologix_admin_refresh_token');
+    if (refreshToken) {
+      try {
+        const refreshRes = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json();
+          if (refreshData.token) {
+            localStorage.setItem('sologix_admin_token', refreshData.token);
+            if (refreshData.refreshToken) {
+              localStorage.setItem('sologix_admin_refresh_token', refreshData.refreshToken);
+            }
+            options.headers['Authorization'] = `Bearer ${refreshData.token}`;
+            const retryRes = await fetch(endpoint, options);
+            if (retryRes.ok) {
+              return await retryRes.json().catch(() => ({}));
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    // Unauthorized / session revoked
     logout();
-    throw new Error('Session expired. Please log in again.');
+    throw new Error('Session expired or revoked. Please log in again.');
   }
 
   const data = await res.json().catch(() => ({}));
@@ -113,7 +138,14 @@ async function checkAuth() {
 
     showAppView();
   } catch (err) {
-    logout();
+    if (err && err.message && (err.message.includes('Session expired') || err.message.includes('revoked'))) {
+      logout();
+    } else if (savedUser) {
+      showToast('Backend unreachable, using cached admin session', 'warning');
+      showAppView();
+    } else {
+      logout();
+    }
   }
 }
 
@@ -156,8 +188,19 @@ function showAppView() {
   startIstClock();
 }
 
-function logout() {
+async function logout() {
+  const refreshToken = localStorage.getItem('sologix_admin_refresh_token');
+  if (refreshToken) {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+    } catch (_) {}
+  }
   localStorage.removeItem('sologix_admin_token');
+  localStorage.removeItem('sologix_admin_refresh_token');
   localStorage.removeItem('sologix_admin_user');
   currentUser = null;
   showLoginView();

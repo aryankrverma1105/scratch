@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthRevokedException implements Exception {
   final int statusCode;
@@ -241,8 +242,35 @@ class OutboxService {
         return OutboxFlushResult(success: false);
       }
     } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        // Attempt silent token refresh in background service isolate
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final rt = prefs.getString('refresh_token');
+          if (rt != null && rt.isNotEmpty) {
+            final refreshDio = Dio(BaseOptions(
+              baseUrl: baseUrl,
+              connectTimeout: const Duration(seconds: 10),
+              receiveTimeout: const Duration(seconds: 10),
+              headers: {'Content-Type': 'application/json'},
+            ));
+            final refreshRes = await refreshDio.post('/api/auth/refresh', data: {'refreshToken': rt});
+            if (refreshRes.statusCode == 200 && refreshRes.data['success'] == true) {
+              final newTok = refreshRes.data['token']?.toString();
+              final newRt = refreshRes.data['refreshToken']?.toString();
+              if (newTok != null) {
+                await prefs.setString('jwt_token', newTok);
+                if (newRt != null) await prefs.setString('refresh_token', newRt);
+                // Retry outbox flush with fresh access token
+                return flushLocations(baseUrl: baseUrl, token: newTok);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
       if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
-        // Token revoked / user deactivated: stop tracking!
+        // Token genuinely revoked / user deactivated: stop tracking!
         return OutboxFlushResult(
           success: false,
           authRevoked: true,
